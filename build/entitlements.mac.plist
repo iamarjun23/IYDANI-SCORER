@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+		Electron's renderer needs V8's JIT, which macOS's hardened runtime
+		blocks by default. These four entitlements are the standard set every
+		Electron app ships to run under Gatekeeper/notarization — none of them
+		grant anything beyond what Chromium itself needs; IYDANI asks for
+		nothing extra (no camera, no mic, no network entitlement — the CSP in
+		src/main.js is what actually restricts network access).
+	-->
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+	<key>com.apple.security.cs.allow-dyld-environment-variables</key>
+	<true/>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
+</plist>

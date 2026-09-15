@@ -1,0 +1,83 @@
+# Strict repository allowlist.
+# Everything is private/local unless explicitly included below.
+*
+
+# Git configuration
+!.gitignore
+
+# Package and build configuration
+!package.json
+!package-lock.json
+!electron-builder.yml
+
+# Build assets required by electron-builder
+!build/
+!build/**
+
+# Application source and required runtime assets
+!src/
+!src/**
+
+# Backend API
+!backend/
+!backend/**
+backend/node_modules/
+backend/dist/
+
+# Infrastructure as code
+!infra/
+!infra/**
+infra/**/.terraform/
+infra/**/*.tfstate
+infra/**/*.tfstate.*
+
+# Automated verification
+!tests/
+!tests/**
+!tools/
+!tools/**
+
+# Files inside otherwise-allowed directories that are not required
+src/renderer/symbols/README.txt
+
+# Never commit secrets or local configuration
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+
+# Never commit dependencies, outputs, caches, or logs
+node_modules/
+release/
+dist/
+out/
+coverage/
+.cache/
+.electron/
+*.log
+*.tmp
+*.bak
+*.blockmap
+latest.yml
+
+# Never commit documentation, reports, archives, or legacy/source references
+*.md
+*.pdf
+*.zip
+*.7z
+*.rar
+docs/
+reference/
+assets/
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*~

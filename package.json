@@ -1,0 +1,62 @@
+{
+  "name": "iydani-scorer",
+  "productName": "IYDANI",
+  "version": "0.20.0",
+  "description": "IYDANI SCORER — Write - N - Read - N - Play. Desktop DNG notation editor.",
+  "main": "src/main.js",
+  "author": {
+    "name": "DNG Studios",
+    "email": "arjunl@lyptron.com"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64",
+    "build:portable": "electron-builder --win portable --x64",
+    "build:installer": "electron-builder --win nsis --x64",
+    "build:mac": "electron-builder --mac",
+    "dist": "electron-builder --win --x64 --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
+    "check": "node tools/check-imports.mjs",
+    "test": "npm run test:layout && npm run test:notation && npm run test:pdf && npm run test:mp3 && npm run test:midi && npm run test:midi-import && npm run test:midi-input && npm run test:midi-webmidi && npm run test:midi-clock && npm run test:midi-follow && npm run test:midi-monitor && npm run test:midi-highlight && npm run test:midi-memory && npm run test:metro-entry && npm run test:metronome && npm run test:pitch && npm run test:audio && npm run test:keybinds && npm run test:midi-device && npm run test:timesig && npm run test:hold-value && npm run test:metro-resolution && npm run test:breaks && npm run test:follow && npm run test:section",
+    "test:layout": "node tests/layout.test.mjs",
+    "test:notation": "node tests/notation.test.mjs",
+    "test:pdf": "node tests/pdf.test.mjs",
+    "test:mp3": "node tests/mp3.test.mjs",
+    "test:midi": "node tests/midi-export.test.mjs",
+    "test:midi-import": "node tests/midi-import.test.mjs",
+    "test:midi-input": "node tests/midi-input.test.mjs",
+    "test:midi-webmidi": "node tests/midi-webmidi.test.mjs",
+    "test:midi-clock": "node tests/midi-clock.test.mjs",
+    "test:midi-follow": "node tests/midi-follow.test.mjs",
+    "test:midi-monitor": "node tests/midi-monitor.test.mjs",
+    "test:midi-highlight": "node tests/midi-highlight.test.mjs",
+    "test:midi-memory": "node tests/midi-memory.test.mjs",
+    "test:metro-entry": "node tests/metro-entry.test.mjs",
+    "test:metronome": "node tests/metronome.test.mjs",
+    "test:pitch": "node tests/pitch.test.mjs",
+    "test:audio": "node tests/audio.test.mjs",
+    "test:keybinds": "node tests/keybinds.test.mjs",
+    "test:midi-device": "node tests/midi-device.test.mjs",
+    "test:timesig": "node tests/timesig.test.mjs",
+    "test:hold-value": "node tests/hold-value.test.mjs",
+    "test:metro-resolution": "node tests/metro-resolution.test.mjs",
+    "test:follow": "node tests/follow.test.mjs",
+    "test:breaks": "node tests/breaks.test.mjs",
+    "test:section": "node tests/section.test.mjs",
+    "verify": "npm run check && npm test"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
+    "electron-reload": "^2.0.0-alpha.1"
+  },
+  "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
+    "electron-updater": "^6.8.9",
+    "jspdf": "^4.2.1",
+    "svg2pdf.js": "^2.7.0",
+    "webmidi": "^3.1.16"
+  }
+}

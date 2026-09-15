@@ -1,0 +1,93 @@
+appId: com.dngstudios.iydani
+productName: IYDANI
+copyright: Copyright © 2026 DNG Studios
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - src/**/*
+  - package.json
+  - "!**/*.md"
+  - "!**/*.map"
+
+asar: true
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  artifactName: "IYDANI-Scorer-${version}-${arch}.${ext}"
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: IYDANI SCORER
+
+portable:
+  artifactName: "IYDANI-Scorer-${version}-portable.${ext}"
+
+# macOS. The app itself needed no code change to run here — main.js already
+# uses path.join() throughout and already branches on process.platform for
+# window-all-closed, and keyboard.js already treats Cmd as the modifier
+# (`e.ctrlKey || e.metaKey`). This section is the packaging half.
+#
+# electron-builder will auto-generate the .icns from build/icon.png (a single
+# 512×512 PNG is the accepted minimum; 1024×1024 is what Apple recommends and
+# is worth doing before a real release, since 512 upscaled looks soft in the
+# Finder's largest icon view).
+#
+# hardenedRuntime + the entitlements file are required for notarization even
+# though IYDANI asks for nothing sensitive — Electron's own JIT needs them,
+# see build/entitlements.mac.plist. `identity` and `notarize` are commented
+# out: without an Apple Developer ID they must stay off, and macOS Gatekeeper
+# will then warn on first launch ("unidentified developer") — the app still
+# runs after Control-click → Open, or after `xattr -cr` on the .app. See the
+# CLAUDE.md note on this file for what's needed to remove that warning.
+mac:
+  target:
+    - target: dmg
+    - target: zip
+  icon: build/icon.png
+  category: public.app-category.music
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # identity: "Developer ID Application: DNG Studios (${env.APPLE_TEAM_ID})"
+  # notarize:
+  #   teamId: ${env.APPLE_TEAM_ID}
+  # Scoped so it does not touch win's live channel below — mac gets its own
+  # prefix in the same bucket rather than the two platforms sharing one path.
+  publish:
+    provider: s3
+    bucket: iydani-releases
+    region: us-east-1
+    path: /releases/mac
+    acl: public-read
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+# Windows' own channel — unchanged from before mac support was added, so
+# already-installed clients keep resolving updates at the same path.
+publish:
+  provider: s3
+  bucket: iydani-releases
+  region: us-east-1
+  path: /releases/win
+  acl: public-read

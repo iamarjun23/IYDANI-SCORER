@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 388 512" role="img" aria-label="IYDANI">
+  <!--
+    The IYDANI monogram, DRAWN rather than cut out of assets/IYDANI.jpeg.
+
+    Every number here is measured off that JPEG at 388x512 and is the geometry
+    the logo was originally built from, so this is the same drawing rather than
+    an impression of it:
+
+      outer box      x 8 .. 379.5,  y 8 .. 504.5,  corner radius 40
+      frame stroke   22.5 wide  ->  centreline radius 40 - 22.5/2 = 28.75
+      black key      x 139 .. 248, from the outer top down to y 346.5,
+                     bottom corners rounded r 12
+      stem           x 182 .. 205, running from the key down into the base
+      the two gaps   33 wide: top 248..281, bottom 205..238
+
+    Being a drawing it has NO background: the white is the key faces only, so
+    the corners are round and the art sits on whatever is behind it instead of
+    on a rectangular tile. The faces have to be painted rather than left clear —
+    the black key has to read as darker than the keys beside it, and it cannot
+    do that if they are transparent over a dark chrome.
+  -->
+  <!-- Inset 1 unit: flush with the frame's outer edge the two antialiased
+       edges do not quite cancel and a hairline of plate shows outside the ink
+       on a dark ground. A unit under it, the stroke covers its own edge. -->
+  <rect x="9" y="9" width="369.5" height="494.5" rx="39" fill="#fff"/>
+  <g fill="none" stroke="#111" stroke-width="22.5">
+    <path d="M248 19.25 H48 A28.75 28.75 0 0 0 19.25 48 V464.5 A28.75 28.75 0 0 0 48 493.25 H205"/>
+    <path d="M281 19.25 H339.5 A28.75 28.75 0 0 1 368.25 48 V464.5 A28.75 28.75 0 0 1 339.5 493.25 H238"/>
+  </g>
+  <path fill="#111" d="M139 8 H248 V334.5 A12 12 0 0 1 236 346.5 H205 V504.5 H182 V346.5 H151 A12 12 0 0 1 139 334.5 Z"/>
+</svg>

@@ -1,0 +1,8 @@
+{
+  "_comment": "Deployment endpoints. NOT SECRETS — a Cognito app client id and an API URL are public facts, and the app client has no secret (see infra/terraform/cognito.tf). Fill these in from `terraform output -json app_config` after the stack is applied; while they are empty the app runs exactly as it always has, offline, with the account UI reporting that no backend is configured.",
+  "region": "ap-south-1",
+  "userPoolId": "",
+  "userPoolClientId": "",
+  "apiUrl": "",
+  "scoresBucketHost": ""
+}

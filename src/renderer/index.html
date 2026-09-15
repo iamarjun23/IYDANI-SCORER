@@ -1,0 +1,4249 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IYDANI SCORER — Write - N - Read - N - Play</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Noto+Sans+Kannada:wght@500;700&family=Noto+Sans+Devanagari:wght@500;700&family=Noto+Sans+Telugu:wght@500;700&family=Noto+Sans+Tamil:wght@500;700&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #dcdce0;
+      --chrome: #f4f4f5;
+      --chrome-2: #ededee;
+      --panel: #ededef;
+      --dock: #f4f4f5;
+      --border: #d8d8dd;
+      --border-2: #c7c7cd;
+      --ink: #1f1f22;
+      --ink-2: #65656c;
+      --ink-3: #9a9aa1;
+      --btn: #ffffff;
+      --btn-2: #e6e6ea;
+      --btn-border: #d4d4da;
+      --hover: #e3e3e7;
+      --active-bg: #1f1f22;
+      --active-fg: #ffffff;
+      --accent: #2f6fe0;
+      --accent-soft: #e7f0fc;
+      --glyph: #2a2a2e;
+      --page: #ffffff;
+      --shadow: 0 2px 10px rgba(20, 20, 25, .12);
+      --pop: #ffffff;
+      /* The colour the sounding symbol is DRAWN in — the whole playback
+         highlight, with nothing laid over the staff and nothing moving. Not
+         defined per theme: the sheet is a white page in light and dark alike,
+         so the ink that has to read against it is the same either way. Dark
+         and saturated rather than pale, because it replaces black on a thin
+         0.42mm stroke and a light tint would read as the note fading out. */
+      --play-ink: #1146c8;
+      /* The section roll. It is a second view of the score, so it is themed
+         like the app around it rather than being a fixed dark DAW panel — a
+         black rectangle in a white rail is not a design, it is a screenshot of
+         someone else's. The blocks are green because the staff is: what the
+         roll draws and what the sheet draws are the same notes. */
+      --roll-bg: #f2f2f5;
+      --roll-line: #e0e0e6;
+      --roll-dead: #e7e7ec;
+      --roll-band: rgba(0, 0, 0, .035);
+      --roll-note: #4f9d3a;
+      --roll-note-lit: #5fb246;
+      --roll-note-ink: #ffffff;
+    }
+
+    [data-theme="dark"] {
+      --bg: #a9a9ae;
+      --chrome: #191919;
+      --chrome-2: #1c1c1e;
+      --panel: #1c1c1e;
+      --dock: #191919;
+      --border: #343437;
+      --border-2: #2a2a2c;
+      --ink: #ededee;
+      --ink-2: #a6a6ac;
+      --ink-3: #76767c;
+      --btn: #2c2c2f;
+      --btn-2: #313135;
+      --btn-border: #454549;
+      --hover: #2a2a2d;
+      --active-bg: #ededee;
+      --active-fg: #18181a;
+      --accent: #7aa2e8;
+      --accent-soft: #26303f;
+      --glyph: #e6e6e8;
+      --page: #ffffff;
+      --shadow: 0 4px 18px rgba(0, 0, 0, .35);
+      --pop: #26262a;
+      --roll-bg: #232326;
+      --roll-line: #3a3a3f;
+      --roll-dead: #1b1b1e;
+      --roll-band: rgba(255, 255, 255, .04);
+      --roll-note: #58a83c;
+      --roll-note-lit: #6cc44e;
+      --roll-note-ink: #f4fff1;
+    }
+
+    :root {
+      --c-sa: #d8513a;
+      --c-ri: #dd8a2a;
+      --c-ga: #c9a200;
+      --c-ma: #3f9a5c;
+      --c-pa: #1f93a8;
+      --c-da: #3f63bf;
+      --c-ni: #8157b3;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
+
+    html,
+    body {
+      height: 100%
+    }
+
+    body {
+      font-family: "Hanken Grotesk", -apple-system, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden
+    }
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh
+    }
+
+    button {
+      font-family: inherit;
+      color: inherit
+    }
+
+    .mono {
+      font-family: "JetBrains Mono", monospace
+    }
+
+    .menubar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 38px;
+      padding: 0 12px;
+      background: var(--chrome);
+      border-bottom: 1px solid var(--border)
+    }
+
+    /* The lockup sits at the head of the menubar because that is the only
+       chrome the app has — there is no titlebar of its own. The mark is black
+       ink on transparent, so dark chrome inverts it the way the sidebar symbol
+       art is inverted; the SCORER chip keeps its own yellow either way, since
+       that yellow is the brand's and is already the page pill's. */
+    .app-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      height: 26px;
+      padding: 0 8px 0 4px;
+      margin-right: 2px;
+      background: none;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      color: var(--ink)
+    }
+
+    .app-brand:hover {
+      background: var(--hover)
+    }
+
+    /* The mark is DRAWN (brand/iydani-mark.svg), not a cut-out, so it carries
+       its own white key faces and its own rounded corners and needs no chip
+       behind it. It is never inverted for dark theme either: the monogram is a
+       keyboard, and the moment its two colours become one the keyboard stops
+       being legible. */
+    .app-brand img {
+      height: 21px;
+      width: auto;
+      display: block
+    }
+
+    .app-brand-name {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: .10em
+    }
+
+    .app-brand-chip {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      color: #1a1a1a;
+      background: #FCDC63;
+      border-radius: 999px;
+      padding: 2px 7px 1px
+    }
+
+    .app-brand-sep {
+      width: 1px;
+      height: 18px;
+      margin: 0 6px 0 2px;
+      background: var(--border)
+    }
+
+    .menubar .m {
+      font-size: 14px;
+      color: var(--ink);
+      background: none;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer
+    }
+
+    .menubar .m:hover,
+    .menubar .m.open {
+      background: var(--hover)
+    }
+
+    .mbtn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      padding: 0 10px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--ink);
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 7px;
+      cursor: pointer
+    }
+
+    .mbtn:hover {
+      background: var(--hover)
+    }
+
+    .mbtn svg {
+      width: 15px;
+      height: 15px
+    }
+
+    .mbtn.icon {
+      padding: 0;
+      width: 30px;
+      justify-content: center
+    }
+
+    .mbtn.accent {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent)
+    }
+
+    .net-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 10px;
+      height: 28px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--ink);
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 7px;
+      user-select: none;
+      margin-right: 2px
+    }
+
+    .net-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #3fb06a;
+      transition: background-color .2s, box-shadow .2s;
+      box-shadow: 0 0 5px #3fb06a
+    }
+
+    .net-status.offline .net-dot {
+      background: #d8513a;
+      box-shadow: 0 0 5px #d8513a
+    }
+
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 56px;
+      padding: 0 12px;
+      background: var(--chrome);
+      border-bottom: 1px solid var(--border)
+    }
+
+    .ico {
+      width: 36px;
+      height: 36px;
+      border: none;
+      background: none;
+      border-radius: 8px;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      color: var(--ink)
+    }
+
+    .ico:hover {
+      background: var(--hover)
+    }
+
+    .ico.on {
+      background: var(--accent);
+      color: #fff
+    }
+
+    /* The metronome is the one control you reach for mid-practice, so it is
+       deliberately the largest button in the transport. */
+    .ico.big {
+      width: 52px;
+      height: 52px;
+      border-radius: 12px
+    }
+
+    .ico.big svg {
+      width: 32px;
+      height: 32px
+    }
+
+    .ico:disabled {
+      opacity: .35;
+      cursor: default
+    }
+
+    .ico svg,
+    .ico .glyph-svg {
+      width: 21px;
+      height: 21px;
+      display: block
+    }
+
+    .ico .glyph-svg { object-fit: contain }
+    [data-theme="dark"] .ico .glyph-svg { filter: invert(1) }
+
+    .bpm-ctl {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      height: 30px;
+      padding: 0 4px 0 10px;
+      border: 1px solid var(--btn-border);
+      background: var(--btn);
+      border-radius: 8px;
+      margin-left: 8px;
+    }
+
+    .bpm-ctl .bpm-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      color: var(--ink-3);
+    }
+
+    .bpm-ctl input {
+      width: 34px;
+      border: none;
+      background: none;
+      text-align: center;
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--ink);
+      -moz-appearance: textfield;
+    }
+
+    .bpm-ctl input::-webkit-outer-spin-button,
+    .bpm-ctl input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    .bpm-ctl input:focus {
+      outline: none;
+    }
+
+    .bpm-ctl button {
+      width: 22px;
+      height: 22px;
+      border: none;
+      background: var(--btn-2);
+      border-radius: 5px;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      color: var(--ink-2);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .bpm-ctl button:hover {
+      background: var(--hover);
+    }
+
+    .sep {
+      width: 1px;
+      height: 28px;
+      background: var(--border);
+      margin: 0 4px
+    }
+
+    .zoom {
+      display: flex;
+      align-items: center;
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 8px;
+      height: 34px;
+      cursor: pointer
+    }
+
+    .zoom b {
+      font-size: 13px;
+      padding: 0 10px
+    }
+
+    .zoom .car {
+      width: 26px;
+      display: grid;
+      place-items: center;
+      border-left: 1px solid var(--btn-border);
+      height: 100%
+    }
+
+    .pillbtn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      height: 34px;
+      padding: 0 14px;
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer
+    }
+
+    .pillbtn:hover {
+      background: var(--hover)
+    }
+
+    .pillbtn svg {
+      width: 17px;
+      height: 17px
+    }
+
+    .pillbtn.on {
+      background: var(--active-bg);
+      color: var(--active-fg);
+      border-color: var(--active-bg)
+    }
+
+    .transport {
+      display: flex;
+      align-items: center;
+      gap: 2px
+    }
+
+    .grow {
+      flex: 1
+    }
+
+    .group {
+      display: flex;
+      align-items: center;
+      gap: 6px
+    }
+
+    .toolbar2 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 48px;
+      padding: 0 14px;
+      background: var(--chrome);
+      border-bottom: 1px solid var(--border)
+    }
+
+    .t2lab {
+      font-size: 11px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      font-weight: 700
+    }
+
+    .rep-pair {
+      display: flex;
+      align-items: center;
+      border: 1px solid var(--btn-border);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--btn)
+    }
+
+    .rep-pair .rb {
+      height: 34px;
+      padding: 0 9px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--glyph)
+    }
+
+    .rep-pair .rb:hover {
+      background: var(--hover)
+    }
+
+    .rep-pair .rb+.rb {
+      border-left: 1px solid var(--border)
+    }
+
+    .rep-pair .rb .cap {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--ink-2)
+    }
+
+    .rep-pair .cnt {
+      font-size: 9.5px;
+      font-weight: 700;
+      color: var(--ink-3);
+      padding: 0 6px
+    }
+
+    #braceTools .rb {
+      height: 46px;
+      padding: 2px 10px;
+      border: 1px solid var(--btn-border);
+      background: var(--btn);
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--glyph)
+    }
+
+    #braceTools .rb:hover {
+      background: var(--hover)
+    }
+
+    /* Armed: this button and the sidebar glyph beside it are one tool, so they
+       are lit the same way .glyph.sel is. */
+    #braceTools .rb.sel {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 12%, transparent)
+    }
+
+    #braceTools .rb .cnt {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--ink-2)
+    }
+
+    .brace {
+      height: 34px;
+      padding: 0 10px;
+      border: 1px solid var(--btn-border);
+      background: var(--btn);
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      color: var(--ink-2);
+      font-size: 12px;
+      font-weight: 600
+    }
+
+    .brace:hover {
+      background: var(--hover)
+    }
+
+    .tabs {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 36px;
+      padding: 0 12px;
+      background: var(--chrome-2);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto
+    }
+
+    .tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      flex: 0 0 auto;
+      height: 24px;
+      padding: 0 8px 0 12px;
+      background: var(--btn);
+      border: 1px solid var(--btn-border);
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--ink-2);
+      cursor: pointer
+    }
+
+    .tab.active {
+      color: var(--ink);
+      border-color: var(--accent)
+    }
+
+    .tab .x {
+      width: 14px;
+      height: 14px;
+      display: grid;
+      place-items: center;
+      border-radius: 3px;
+      color: var(--ink-3)
+    }
+
+    .tab .x:hover {
+      background: var(--hover);
+      color: var(--ink)
+    }
+
+    .tab.add {
+      padding: 0 9px;
+      color: var(--ink-3)
+    }
+
+    /* The right rail holds the section roll, which is 24 lanes of ladder plus
+       a ruler, a rest lane and the note list under it. 380px was sized for a
+       single-lane strip and cramped every one of those. */
+    .work {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 176px 1fr 460px;
+      min-height: 0
+    }
+
+    /* ---- Note inspector (right rail) ---- */
+    .inspect {
+      background: var(--panel);
+      border-left: 1px solid var(--border);
+      overflow-y: auto
+    }
+
+    .iempty {
+      padding: 10px 12px;
+      font-size: 11.5px;
+      line-height: 1.55;
+      color: var(--ink-3)
+    }
+
+    .ihead {
+      padding: 10px 12px 9px;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border)
+    }
+
+    .ihead .big {
+      display: block;
+      font-size: 21px;
+      font-weight: 700;
+      line-height: 1.1
+    }
+
+    .ihead .sub {
+      display: block;
+      font-size: 10.5px;
+      color: var(--ink-3);
+      margin-top: 2px;
+      letter-spacing: .03em
+    }
+
+    .ilist {
+      padding: 4px 0
+    }
+
+    .irow {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 4px 12px;
+      font-size: 11.5px;
+      align-items: baseline
+    }
+
+    .irow .k {
+      color: var(--ink-3);
+      flex: 0 0 auto
+    }
+
+    .irow .v {
+      text-align: right;
+      font-weight: 600
+    }
+
+    .irow.hi .v {
+      color: var(--accent);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 12px
+    }
+
+    .irow.note {
+      border-top: 1px solid var(--border);
+      margin-top: 4px;
+      padding-top: 7px
+    }
+
+    .irow .dim {
+      color: var(--ink-3);
+      font-weight: 400
+    }
+
+    .iedit {
+      border-top: 1px solid var(--border);
+      padding: 10px 12px;
+      display: grid;
+      gap: 7px;
+      font-size: 11px;
+      color: var(--ink-3)
+    }
+
+    .iedit label { display: grid; gap: 4px }
+    .iedit input {
+      width: 100%;
+      box-sizing: border-box;
+      color: var(--ink-2);
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 6px;
+      padding: 4px 6px
+    }
+
+    .itime {
+      position: relative;
+      height: 18px;
+      border: 1px solid var(--btn-border);
+      border-radius: 4px;
+      background: repeating-linear-gradient(90deg, var(--btn-2) 0 12px, transparent 12px 13px);
+      cursor: ew-resize;
+      touch-action: none
+    }
+
+    .itime-fill {
+      height: 100%;
+      background: color-mix(in srgb, var(--accent) 35%, transparent);
+      pointer-events: none
+    }
+
+    .itime-line {
+      position: absolute;
+      top: -3px;
+      bottom: -3px;
+      width: 3px;
+      margin-left: -1px;
+      background: var(--accent);
+      border-radius: 2px;
+      pointer-events: none
+    }
+
+    .iedit button {
+      color: var(--ink-2);
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 6px;
+      padding: 4px 8px;
+      cursor: pointer
+    }
+
+    /* Clickable glyphs on the staff */
+    .srow svg .glyph {
+      cursor: pointer
+    }
+
+    .srow svg .glyph.sel {
+      filter: drop-shadow(0 0 2px var(--accent)) drop-shadow(0 0 5px var(--accent))
+    }
+
+    .srow svg .section-hit.sel {
+      fill: color-mix(in srgb, var(--accent) 10%, transparent);
+      stroke: var(--accent);
+      stroke-width: 1;
+      stroke-dasharray: 3 2
+    }
+
+    /* ---- The section roll ----
+       One lane per rung of the staff's ladder: 24 of them, 21 writable and 3
+       dead (the magic line and its two octave echoes). A block's TOP is its
+       pitch and its WIDTH the time it plays for, so the panel draws the same
+       two facts the staff does, at a size you can drag. */
+    .stime-wrap {
+      display: grid;
+      gap: 8px
+    }
+
+    .roll {
+      display: grid;
+      grid-template-columns: 32px 1fr;
+      user-select: none
+    }
+
+    .roll-gut {
+      font: 8.5px "JetBrains Mono", monospace;
+      color: var(--ink-3);
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 5px
+    }
+
+    .roll-ruler {
+      position: relative;
+      height: 12px;
+      font: 9.5px "JetBrains Mono", monospace;
+      color: var(--ink-3)
+    }
+
+    .roll-tick {
+      position: absolute;
+      top: 0;
+      padding-left: 3px
+    }
+
+    .roll-tick.grp {
+      color: var(--ink-2);
+      font-weight: 700
+    }
+
+    /* The keys column is the roll's own gutter — the svara letter on every
+       lane, and the sheet's ▲■▼ sthayi mark on the Sa of each band, so three
+       marks say which octave you are in rather than 21 repeats of it. */
+    .roll-keys {
+      height: calc(var(--lanes) * var(--lane-h));
+      display: grid;
+      grid-auto-rows: var(--lane-h);
+      box-sizing: border-box;
+      border: 1px solid var(--btn-border);
+      border-right: 0;
+      border-radius: 5px 0 0 5px;
+      overflow: hidden;
+      background: var(--roll-bg)
+    }
+
+    .roll-key {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 4px;
+      font: 7.5px "JetBrains Mono", monospace;
+      line-height: 1;
+      color: var(--ink-3)
+    }
+
+    .roll-key b {
+      font-weight: 700;
+      color: var(--ink-2)
+    }
+
+    .roll-key i {
+      font-style: normal;
+      opacity: .8
+    }
+
+    .roll-key[data-oct="0"] {
+      background: var(--roll-band)
+    }
+
+    .roll-key.dead {
+      background: var(--roll-dead)
+    }
+
+    .roll-track {
+      position: relative;
+      height: calc(var(--lanes) * var(--lane-h));
+      box-sizing: border-box;
+      border: 1px solid var(--btn-border);
+      border-radius: 0 5px 5px 0;
+      background: var(--roll-bg);
+      overflow: hidden;
+      touch-action: none
+    }
+
+    .roll-lane {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: var(--lane-h);
+      border-top: 1px solid var(--roll-line)
+    }
+
+    .roll-lane[data-oct="0"] {
+      background: var(--roll-band)
+    }
+
+    /* A dead lane is the magic line, or one of its two octave echoes. Nothing
+       is ever written on it — the staff draws those as dot-dashed rules, and
+       the same reading applies here: a line you pass through, not a lane. */
+    .roll-lane.dead {
+      background: var(--roll-dead);
+      border-top-style: dotted;
+      border-top-color: var(--ink-3)
+    }
+
+    .roll-beat {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: color-mix(in srgb, var(--ink-3) 45%, transparent)
+    }
+
+    .roll-beat.grp {
+      background: color-mix(in srgb, var(--ink-3) 85%, transparent)
+    }
+
+    .roll-sub {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: color-mix(in srgb, var(--ink-3) 15%, transparent)
+    }
+
+    /* Where the score is sounding, when it is sounding in this division. */
+    .roll-head {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--play-ink);
+      box-shadow: 0 0 4px var(--play-ink)
+    }
+
+    .roll-blk {
+      position: absolute;
+      height: calc(var(--lane-h) - 2px);
+      margin-top: 1px;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      padding: 0 3px;
+      overflow: hidden;
+      white-space: nowrap;
+      border-radius: 2px;
+      background: var(--roll-note);
+      color: var(--roll-note-ink);
+      font: 7.5px "JetBrains Mono", monospace;
+      cursor: grab;
+      touch-action: none
+    }
+
+    .roll-blk.lit,
+    .roll-blk:hover {
+      background: var(--roll-note-lit)
+    }
+
+    .roll-blk:active {
+      cursor: grabbing
+    }
+
+    /* A lowered svara shares its rung with the natural — the notehead is what
+       separates them on the staff, so a mark is what separates them here. M2
+       is the one variant that is SHARP, and the staff draws it as a hollow
+       triangle rather than a filled goli, so it is marked differently. */
+    .roll-blk.var {
+      box-shadow: inset 3px 0 0 var(--roll-note-ink)
+    }
+
+    .roll-blk.m2 {
+      box-shadow: inset 0 -2px 0 var(--roll-note-ink)
+    }
+
+    .roll-blk.derived {
+      opacity: .55
+    }
+
+    /* Carried in from the division above / running on into the next one: the
+       square edge says the note does not begin or end here. */
+    .roll-blk.in {
+      border-top-left-radius: 0;
+      border-bottom-left-radius: 0;
+      border-left: 2px dotted var(--roll-note-ink)
+    }
+
+    .roll-blk.out {
+      border-top-right-radius: 0;
+      border-bottom-right-radius: 0;
+      border-right: 2px dotted var(--roll-note-ink)
+    }
+
+    /* Dragged left into the note in front of it. There is no silence there to
+       absorb, so the block stops — and says so, rather than sitting still for
+       no visible reason. */
+    .roll-blk.walled {
+      outline: 1px solid var(--play-ink);
+      outline-offset: 1px
+    }
+
+    /* Sa and Pa have no lowered form, so shift-click writes nothing on them —
+       the cursor must not promise otherwise. */
+    .roll-blk.novar {
+      cursor: grab
+    }
+
+    .roll-nm {
+      overflow: hidden;
+      font-weight: 700;
+      letter-spacing: .02em
+    }
+
+    .roll-rests {
+      position: relative;
+      height: 15px;
+      margin-top: 3px;
+      box-sizing: border-box;
+      border: 1px solid var(--btn-border);
+      border-radius: 4px;
+      background: var(--roll-bg);
+      overflow: hidden;
+      touch-action: none
+    }
+
+    /* Silence reads as the absence of a note: no fill, only an outline. */
+    .roll-rest {
+      position: absolute;
+      top: 2px;
+      bottom: 2px;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 0 4px;
+      overflow: hidden;
+      border: 1px dashed var(--ink-3);
+      border-radius: 2px;
+      color: var(--ink-3);
+      font: 8px "JetBrains Mono", monospace;
+      touch-action: none
+    }
+
+    .roll-rest.derived {
+      border-color: color-mix(in srgb, var(--ink-3) 45%, transparent);
+      color: color-mix(in srgb, var(--ink-3) 70%, transparent)
+    }
+
+    .roll-rest.lit,
+    .roll-rest:hover {
+      border-style: solid;
+      color: var(--ink-2)
+    }
+
+    .roll-grip {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      right: 0;
+      width: 7px;
+      cursor: ew-resize;
+      touch-action: none;
+      border-right: 2px solid var(--roll-note-ink)
+    }
+
+    .roll-rest .roll-grip {
+      border-right-color: var(--ink-3)
+    }
+
+    .roll-grip:hover {
+      background: color-mix(in srgb, var(--roll-note-ink) 35%, transparent)
+    }
+
+    .stime-row.lit {
+      color: var(--ink)
+    }
+
+    .stime-rows {
+      display: grid;
+      gap: 3px
+    }
+
+    .stime-row {
+      display: grid;
+      grid-template-columns: 14px 1fr auto 60px;
+      align-items: center;
+      gap: 6px;
+      font: 10.5px "JetBrains Mono", monospace;
+      color: var(--ink-2)
+    }
+
+    .stime-n {
+      color: var(--ink-3);
+      text-align: right
+    }
+
+    .stime-nm {
+      font-weight: 700;
+      color: var(--ink)
+    }
+
+    .stime-sym {
+      color: var(--ink-3)
+    }
+
+    .stime-carry {
+      color: var(--ink-3);
+      margin-left: 3px
+    }
+
+    .stime-input {
+      width: 60px;
+      box-sizing: border-box;
+      color: var(--ink-2);
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 4px;
+      padding: 3px 4px;
+      font: 10px "JetBrains Mono", monospace
+    }
+
+    .stime-fixed {
+      color: var(--ink-3);
+      text-align: right
+    }
+
+    .stime-sum {
+      color: var(--ink-3);
+      font: 10px "JetBrains Mono", monospace
+    }
+
+    .tools {
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      overflow-y: auto
+    }
+
+    .tools-title {
+      font-size: 12px;
+      color: var(--ink-2);
+      padding: 9px 12px 5px;
+      letter-spacing: .04em
+    }
+
+    .tsec {
+      border-top: 1px solid var(--border)
+    }
+
+    .tsec .head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      font-size: 12.5px;
+      color: var(--ink);
+      cursor: pointer;
+      user-select: none
+    }
+
+    .tsec .head svg {
+      width: 14px;
+      height: 14px;
+      color: var(--ink-3)
+    }
+
+    .tgrid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      padding: 2px 8px 12px
+    }
+
+    .glyph {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
+      padding: 7px 2px 5px;
+      border-radius: 9px;
+      cursor: pointer;
+      border: 1px solid transparent
+    }
+
+    .glyph:hover {
+      background: var(--hover)
+    }
+
+    .glyph.sel {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 12%, transparent)
+    }
+
+    .glyph .art {
+      height: 36px;
+      display: grid;
+      place-items: center;
+      color: var(--glyph)
+    }
+
+    .glyph .nm {
+      font-size: 10.5px;
+      color: var(--ink-3);
+      line-height: 1
+    }
+
+    .tgrid.oct {
+      grid-template-columns: 1fr 1fr 1fr
+    }
+
+    /* ---- Break tool ----
+       The per-division hit areas rowSVG() writes are inert until the tool is
+       armed, so in every other mode a click on the staff reaches the glyph
+       under it and the note inspector behaves exactly as before. */
+    .boxhit {
+      pointer-events: none
+    }
+
+    body.break-mode .boxhit {
+      pointer-events: all;
+      cursor: cell
+    }
+
+    body.break-mode .boxhit:hover {
+      fill: var(--accent);
+      fill-opacity: .12
+    }
+
+    /* While a break badge is being dragged the divisions are drop targets in
+       whatever tool is armed, so the gesture reads the same from any mode. */
+    body.brk-dragging .boxhit {
+      pointer-events: all
+    }
+
+    body.brk-dragging .boxhit.drop {
+      fill: var(--accent);
+      fill-opacity: .18
+    }
+
+    /* WHERE THE LAST BREAK IS, on the paper. The wash names the division that
+       moved down; the line is the cut itself, at that division's left edge.
+       Both ride on elements rowSVG() writes only for the screen, so neither
+       can reach an export — and the print rule below keeps them off paper.
+       Shown while the tool is armed, while a badge is being dragged, and for a
+       moment after a break is placed or moved, so the eye is taken to it even
+       from another tool. */
+    .boxhit.lastbrk,
+    .brkline {
+      opacity: 0;
+      transition: opacity .18s ease
+    }
+
+    .brkline {
+      stroke: var(--accent);
+      stroke-width: 2.4;
+      stroke-linecap: round;
+      pointer-events: none
+    }
+
+    .boxhit.lastbrk {
+      fill: var(--accent);
+      fill-opacity: .10
+    }
+
+    body.break-mode .boxhit.lastbrk,
+    body.break-mode .brkline,
+    body.brk-dragging .boxhit.lastbrk,
+    body.brk-dragging .brkline,
+    body.brk-flash .boxhit.lastbrk,
+    body.brk-flash .brkline {
+      opacity: 1
+    }
+
+    /* ---- repeat marks: selection, hover and dragging --------------------
+       The braces on the staff are handles. Hovering or selecting one lights it,
+       reveals its ✕ and tints the stretch it repeats — all by class, because
+       render() rewrites the whole sheet and is far too expensive to run on a
+       mouseover. */
+    .repmark {
+      cursor: grab
+    }
+
+    body.rep-dragging .repmark {
+      cursor: grabbing
+    }
+
+    .repmark .repsel {
+      stroke: var(--accent);
+      stroke-width: 1.4;
+      opacity: 0
+    }
+
+    .repmark.hot .repsel {
+      opacity: .55
+    }
+
+    .repmark.sel .repsel {
+      opacity: 1
+    }
+
+    /* The stretch one open/close pair covers. Drawn by rowSVG at zero opacity
+       and lit from here, so it never fights the playback wash for attention —
+       only the pair being pointed at or edited is ever shown. */
+    .repspan {
+      transition: fill-opacity .12s ease
+    }
+
+    .repspan.on {
+      fill-opacity: .10
+    }
+
+    /* The ✕ beside a brace. HTML over the row, like the break badge, so it
+       cannot print or export. Hidden until its brace is hovered or selected —
+       a red ✕ standing beside every repeat on the page would be noise. */
+    .srow .repx {
+      position: absolute;
+      width: 0.42cm;
+      height: 0.42cm;
+      margin: -0.21cm 0 0 -0.21cm;
+      display: grid;
+      place-items: center;
+      font-size: 0.26cm;
+      line-height: 1;
+      color: #fff;
+      background: #b8442b;
+      border-radius: 50%;
+      cursor: pointer;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .12s ease
+    }
+
+    .srow .repx.on {
+      opacity: 1;
+      pointer-events: all
+    }
+
+    @media print {
+      .srow .repx {
+        display: none
+      }
+    }
+
+    /* The brace following the pointer during a drag, and the line showing the
+       division edge it would land on. Both are body-level so they can cross
+       row boundaries and the sheet's own overflow. */
+    .rep-ghost {
+      position: fixed;
+      z-index: 90;
+      width: 26px;
+      height: 34px;
+      margin: -17px 0 0 -13px;
+      pointer-events: none;
+      opacity: .85;
+      filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .3))
+    }
+
+    .rep-ghost svg,
+    .rep-ghost img {
+      width: 100%;
+      height: 100%
+    }
+
+    .rep-ghost.bad {
+      opacity: .4
+    }
+
+    .rep-drop {
+      position: fixed;
+      z-index: 89;
+      width: 2px;
+      margin-left: -1px;
+      background: var(--accent);
+      border-radius: 1px;
+      pointer-events: none;
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent)
+    }
+
+    .rep-drop.bad {
+      background: #b8442b;
+      box-shadow: 0 0 0 3px color-mix(in srgb, #b8442b 22%, transparent)
+    }
+
+    /* The loop's start, waiting for its end. Dashed rather than solid so the
+       point already committed by a click cannot be mistaken for the drag's
+       live drop line, which is the only other thing that looks like it. */
+    .rep-drop.pend {
+      width: 3px;
+      margin-left: -1.5px;
+      background: repeating-linear-gradient(to bottom,
+          var(--accent) 0 6px, transparent 6px 11px)
+    }
+
+    /* ---- Repeat tool ----
+       Armed from a palette brace: one click on the sheet marks where the loop
+       starts, the next marks where it ends. The braces already on the staff
+       keep their own cursor, because they are still handles while it is up. */
+    body.repeat-mode .srow svg {
+      cursor: crosshair
+    }
+
+    /* Palette braces are drag sources as well as buttons. */
+    #repeatGrid .glyph.rep,
+    #braceTools .rb {
+      cursor: grab;
+      touch-action: none
+    }
+
+    /* The ↵ badge at the end of a row that a manual break falls after. It sits
+       in the sheet's right margin, opposite the row number, and is HTML rather
+       than part of the row SVG so it never prints or exports. */
+    .srow .brkmark {
+      position: absolute;
+      right: -0.9cm;
+      width: 0.8cm;
+      height: 0.8cm;
+      margin-top: -0.4cm;
+      display: grid;
+      place-items: center;
+      font-size: 0.5cm;
+      line-height: 1;
+      color: var(--accent);
+      /* Filled rather than bare. At 0.5cm of outline it read as a speck beside
+         the staff, and now that a broken row measures the full 18cm there is
+         nothing else in the margin to notice. Mixed against WHITE, not against
+         the theme: the sheet is a white page in dark mode too. */
+      background: color-mix(in srgb, var(--accent) 15%, #fff);
+      border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+      border-radius: 0.14cm;
+      cursor: pointer;
+      user-select: none
+    }
+
+    .srow .brkmark:hover {
+      background: color-mix(in srgb, var(--accent) 28%, #fff)
+    }
+
+    /* The break last placed or moved. Solid accent against the others' tint,
+       so a page carrying several of them says which one the arrow keys move. */
+    .srow .brkmark.last {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      cursor: grab
+    }
+
+    .srow .brkmark.last:hover {
+      background: var(--accent)
+    }
+
+    /* The end-of-line bracket on the staff itself. Always up — it is what says
+       a break is here at all, and after the row is justified it is the only
+       thing that does. The current break's is drawn solid; the rest sit back so
+       one page of them does not read as a row of closing barlines. */
+    .brkend {
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 3.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: .5;
+      pointer-events: none
+    }
+
+    .brkend.last {
+      stroke-width: 4;
+      opacity: 1
+    }
+
+    body.brk-dragging .srow .brkmark.last {
+      cursor: grabbing
+    }
+
+    /* The badge riding the pointer during a drag, and the chip that stands in
+       for a break parked past the end of the score. Both are editing
+       affordances, so both are hidden from print with everything else here. */
+    .brk-ghost {
+      position: fixed;
+      z-index: 60;
+      width: 0.5cm;
+      height: 0.5cm;
+      margin: -0.25cm 0 0 -0.25cm;
+      display: grid;
+      place-items: center;
+      font-size: 0.36cm;
+      line-height: 1;
+      color: #fff;
+      background: var(--accent);
+      border-radius: 0.1cm;
+      pointer-events: none;
+      user-select: none
+    }
+
+    .brk-ghost.bad {
+      background: #b8442b
+    }
+
+    .brkghost {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.18cm;
+      padding: 0.24cm 0 0.1cm;
+      font-family: "Hanken Grotesk", sans-serif;
+      font-size: 0.3cm;
+      color: var(--ink-2)
+    }
+
+    .brkghost .gbadge {
+      display: grid;
+      place-items: center;
+      width: 0.42cm;
+      height: 0.42cm;
+      border-radius: 0.1cm;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.3cm;
+      line-height: 1
+    }
+
+    .brkghost b {
+      font-weight: 500
+    }
+
+    .brkghost .drop {
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px
+    }
+
+    /* The sidebar readout under the Break tool: which break is current, and in
+       words, because a break out past the written music has nothing on the
+       page to point at. */
+    .brkinfo {
+      margin: 8px 2px 0;
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--ink-2)
+    }
+
+    .brkinfo .where {
+      color: var(--accent);
+      cursor: pointer;
+      font-weight: 600
+    }
+
+    .brkinfo .hint {
+      display: block;
+      opacity: .75
+    }
+
+    @media print {
+
+      .brkmark,
+      .brkghost,
+      .brk-ghost,
+      .brkinfo {
+        display: none
+      }
+
+      /* Belt and braces: the wash, the cut line and the end-of-line bracket
+         are already only drawn for the screen, but the sheet that prints IS
+         this DOM. */
+      .boxhit.lastbrk,
+      .brkline,
+      .brkend {
+        display: none
+      }
+    }
+
+    .tgrid.oct .glyph .art {
+      height: 26px
+    }
+
+    .stage {
+      overflow: auto;
+      padding: 26px;
+      background: var(--bg)
+    }
+
+    /* A4 portrait at true size. Side padding is 1.5cm less the 0.3048cm of
+       bleed the row SVG carries either side of the staff, so the staff's own
+       left edge lands exactly 1.5cm in and its right edge exactly 1.5cm from
+       the far side — an 18.00cm span. */
+    .sheetwrap {
+      transform-origin: top left;
+      transition: transform .12s;
+      width: 21cm
+    }
+
+    .sheet {
+      position: relative;
+      background: var(--page);
+      box-shadow: var(--shadow);
+      max-width: 21cm;
+      margin: 0 auto;
+      padding: 22px 1.1952cm 34px;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #111;
+      border-radius: 4px;
+      overflow: hidden;
+      min-height: 520px
+    }
+
+    .sheet .wmark {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-22deg);
+      pointer-events: none;
+      font-family: "Hanken Grotesk", "Arial Black", sans-serif;
+      font-weight: 900;
+      font-size: 200px;
+      letter-spacing: 0.12em;
+      color: #7a4b9c;
+      opacity: 0.18;
+      user-select: none;
+      z-index: 0;
+      white-space: nowrap;
+      text-transform: uppercase
+    }
+
+    .sheet>*:not(.wmark) {
+      position: relative;
+      z-index: 2
+    }
+
+    .sheet .brand {
+      position: absolute;
+      right: 14px;
+      bottom: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      color: #7a4b9c;
+      opacity: 0.85;
+      font-family: "Hanken Grotesk", sans-serif;
+      z-index: 3;
+      user-select: none
+    }
+
+    [data-theme="dark"] .sheet .wmark {
+      color: #c98bff;
+      opacity: 0.16
+    }
+
+    [data-theme="dark"] .sheet .brand {
+      color: #c98bff
+    }
+
+    /* Emblem, a rule, then the tone legend — the emblem's centre, the rule and
+       the legend's midline all sit on one horizontal axis, as they do on the
+       printed sheet. The legend keeps its natural width; the rule takes up
+       whatever is left. */
+    .sheet-head {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px
+    }
+
+    .sheet-head .headrule {
+      flex: 1;
+      height: 0;
+      border-top: 1.4px solid #111
+    }
+
+    /* The emblem is a single yellow disc with black ink, ~11.5mm across on the
+       printed sheet. The artwork draws its own outline, so the box adds none —
+       a CSS ring around it would read as a second circle. */
+    .emblem {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto
+    }
+
+    .emblem svg,
+    .emblem img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block
+    }
+
+    /* The sheet is white paper in either theme, so nothing on it inverts. The
+       inversion below is for the dark CHROME — the sidebar and toolbars. */
+    [data-theme="dark"] .emblem img {
+      filter: invert(1)
+    }
+
+    [data-theme="dark"] .sheet .emblem svg,
+    [data-theme="dark"] .sheet .emblem img {
+      filter: none
+    }
+
+    [data-theme="dark"] .glyph .art img {
+      filter: invert(1)
+    }
+
+    /* The palette braces are DRAWN by notation.js in currentColor, so they take
+       the chrome's own ink in either theme — inverting them, as the imported
+       artwork needed, would now flip them back to black on the dark sidebar. */
+    .rep-half {
+      display: inline-block;
+      vertical-align: middle
+    }
+
+    table.tones {
+      border-collapse: collapse;
+      background: #fdf5c4
+    }
+
+    table.tones td {
+      border: 1.4px solid #3a3a36;
+      width: 28px;
+      height: 22px;
+      text-align: center;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: Arial
+    }
+
+    table.tones .mk {
+      height: 23px
+    }
+
+    .mk-o {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border: 1.5px solid #111;
+      border-radius: 50%
+    }
+
+    .mk-f {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      background: #111;
+      border-radius: 50%
+    }
+
+    /* M2's notehead is a triangle on the staff, so it is a triangle in the key
+       too. Slightly wider and taller than the 9px goli beside it — a triangle
+       of equal width reads smaller than the circle it stands next to. */
+    .mk-t {
+      display: inline-block;
+      width: 12px;
+      height: 11px;
+      vertical-align: -1px
+    }
+
+    /* Title / Tempo on the left, K.S. / T.S. on the right — the layout the
+       printed sheet uses. Two columns, two rows, the right column right-aligned
+       so the two colons stack. Label and value are one piece of bold text with
+       no rule under the value, exactly as the sheet prints them. */
+    .sheet-meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      row-gap: 18px;
+      margin: 34px 0 26px
+    }
+
+    .metaline.right {
+      text-align: right
+    }
+
+    .metaline .lab,
+    .metaline .val {
+      font-size: 15px;
+      font-weight: 700
+    }
+
+    .metaline .val {
+      margin-left: 8px
+    }
+
+    /* Only the title is typed. Its edit affordance is a caret and a hover tint,
+       not a printed rule — a rule under one field and not the other three would
+       read as part of the notation. */
+    .metaline .val[contenteditable]:hover,
+    .metaline .val[contenteditable]:focus {
+      outline: none;
+      background: #f3ecd0;
+      border-radius: 3px;
+      box-shadow: 0 0 0 3px #f3ecd0
+    }
+
+    .score-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      padding: 4px 2px
+    }
+
+    /* The row SVG carries its own physical width (18cm of staff + bleed), so
+       nothing here may stretch it. The row number badge is lifted into the
+       sheet's left margin instead of taking width from the staff. */
+    .srow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative
+    }
+
+    /* The row gutter: the row number, and beside it the sthayi key — a triangle
+       above the staff for taara, a square on it for madhya, a triangle below it
+       for mandra. The number is plain notation ink beside the marks — no badge,
+       because the printed sheet writes it that way. Every size and offset here
+       is in CENTIMETRES, measured off the drawing against the 0.8cm staff
+       height — px would fix the key to the screen while the staff beside it is
+       physically sized. Every offset and box size now comes from the GUTTER_*
+       constants in config.js, written in as inline styles by rowGutter(),
+       because pdf.js has to draw the same gutter without a DOM and the two
+       copies of these numbers had drifted apart. What stays here is the INK:
+       colour, font, and the shapes the ::before rules draw. They are positioned
+       off the row SVG's OWN geometry (render() writes a cm offset per mark)
+       rather than off the row box, because a row holding mandra or taara notes
+       grows asymmetrically and centring on the box would slide the square off
+       the staff. */
+    .srow .num {
+      position: absolute;
+      display: grid;
+      place-items: center;
+      font-family: "Hanken Grotesk", sans-serif
+    }
+
+    .srow .num b {
+      font-size: 0.36cm;
+      font-weight: 800;
+      color: #1f1b20
+    }
+
+    .srow .sth {
+      position: absolute;
+      transform: translateY(-50%);
+      color: #1f1b20
+    }
+
+    .srow .sth::before {
+      content: "";
+      display: block;
+      margin: 0 auto
+    }
+
+    .srow .sth.up::before {
+      width: 0;
+      height: 0;
+      border-left: 0.138cm solid transparent;
+      border-right: 0.138cm solid transparent;
+      border-bottom: 0.238cm solid currentColor
+    }
+
+    .srow .sth.mid::before {
+      width: 0.257cm;
+      height: 0.257cm;
+      background: currentColor
+    }
+
+    .srow .sth.dn::before {
+      width: 0;
+      height: 0;
+      border-left: 0.138cm solid transparent;
+      border-right: 0.138cm solid transparent;
+      border-top: 0.238cm solid currentColor
+    }
+
+    /* Page number, centred at the FOOT of the sheet in the same yellow the tone
+       legend and the emblem use — pinned to the page like the brand line beside
+       it, not trailing the last row, so a short score still prints it where the
+       reference layout puts it. */
+    .sheet .pagenum {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 14px;
+      display: flex;
+      justify-content: center;
+      z-index: 3
+    }
+
+    .sheet .pagenum span {
+      min-width: 34px;
+      padding: 3px 12px;
+      border: 1.4px solid #3a3a36;
+      border-radius: 11px;
+      background: #fdf5c4;
+      text-align: center;
+      font-family: Arial;
+      font-size: 13px;
+      font-weight: 700;
+      color: #1f1b20
+    }
+
+    /* Honour the width/height attributes rowSVG sets in cm — do not flex. */
+    .srow svg {
+      flex: 0 0 auto;
+      display: block
+    }
+
+    /* Keep all notation PNG icons sharp when scaled or zoomed */
+    .sheet img,
+    .sheet image,
+    .srow svg image,
+    .tgrid img,
+    .glyph img,
+    .art img {
+      transform-origin: center;
+      transform-box: fill-box;
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: crisp-edges;
+      image-rendering: pixelated;
+    }
+
+    /* The sounding glyph carries data-active="1" and is DRAWN in --play-ink by
+       rowSVG(); there is deliberately no rule for it here. It used to lift 5
+       units and take a drop-shadow, which is gone — the colour is the whole
+       cue now. Do not reintroduce a transform: render() rebuilds every glyph
+       on each beat of a held note, so anything animated restarts on every
+       rebuild and reads as a vibration. */
+
+    .empty-hint {
+      text-align: center;
+      color: #9a9a9a;
+      font-family: "Hanken Grotesk", sans-serif;
+      font-size: 13px;
+      padding: 46px 0 14px
+    }
+
+    .empty-hint .kbd {
+      font-family: "JetBrains Mono", monospace;
+      background: #f0f0f2;
+      border: 1px solid #d6d6da;
+      padding: 1px 6px;
+      border-radius: 5px;
+      font-size: 11px
+    }
+
+    .dock {
+      background: var(--dock);
+      border-top: 1px solid var(--border);
+      padding: 10px 16px 14px
+    }
+
+    .dock-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 9px
+    }
+
+    .dock-head .label {
+      font-size: 11px;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      font-weight: 700
+    }
+
+    .dock-head .status {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11.5px;
+      color: var(--ink-3)
+    }
+
+    .dock-head .status .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--ink-3)
+    }
+
+    /* Live MIDI: the dot goes green while a device is bound, so "is my piano
+       connected" is answerable at a glance rather than by playing a note. */
+    .dock-head .status.live .dot {
+      background: #35c46a;
+      box-shadow: 0 0 0 3px rgba(53, 196, 106, .18)
+    }
+
+    .dock-head .midi-dev {
+      font-size: 11.5px;
+      color: var(--ink-2);
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 7px;
+      padding: 3px 6px;
+      max-width: 190px
+    }
+
+    .dock-head .midi-dev[hidden] {
+      display: none
+    }
+
+    /* What the sync is actually DOING. Quiet by default and warm when it needs
+       a hand from the player, because "this keyboard sends no beat clock" is
+       the one line that stops a player retrying a setting that can never
+       work. */
+    .dock-head .midi-sync-state {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px;
+      color: var(--muted, #8a8a8e);
+      white-space: nowrap;
+      letter-spacing: .02em
+    }
+
+    .dock-head .midi-sync-state[hidden] {
+      display: none
+    }
+
+    .dock-head .midi-sync-state.live {
+      color: #3fb06a
+    }
+
+    .dock-head .midi-sync-state.want {
+      color: #d89a3a
+    }
+
+
+    /* How wide the keyboard is. It sits with the sthayi tabs because the two
+       together decide which keys are on screen. */
+    .dock-head .span-sel {
+      font-size: 11.5px;
+      color: var(--ink-2);
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 7px;
+      padding: 3px 6px
+    }
+
+    .dock-head .span-sel option { background: var(--pop); color: var(--ink) }
+
+    .dock-head .span-sel[hidden] { display: none }
+
+    /* The device keyboard. Same keys as the on-screen piano, plus: the note
+       name your device has printed on it, and a washed-out state for the keys
+       the staff cannot write. */
+    .wkey .nn {
+      font-size: 9px;
+      font-family: "JetBrains Mono", monospace;
+      color: #9a9a9a;
+      margin-top: 3px;
+      pointer-events: none
+    }
+
+    .bkey .nn {
+      font-size: 8px;
+      font-family: "JetBrains Mono", monospace;
+      color: #8a8a8a;
+      margin-top: 2px;
+      pointer-events: none
+    }
+
+    /* Outside the staff's three sthayis. The key is still drawn — it is on
+       your keyboard, and a picture that leaves it out is a lie — and it still
+       sounds, but it carries no svara because nothing can be written for it. */
+    .wkey.unmapped {
+      background: repeating-linear-gradient(135deg, #f2f2f4 0 6px, #e8e8ec 6px 12px)
+    }
+
+    .bkey.unmapped {
+      background: repeating-linear-gradient(135deg, #2b2b2b 0 6px, #1a1a1a 6px 12px)
+    }
+
+    .wkey .off, .bkey .off {
+      font-size: 10px;
+      color: #b4b4b8;
+      pointer-events: none
+    }
+
+    /* Nothing plugged in. The keyboard area says so outright rather than
+       showing a keyboard that answers to nothing. */
+    .piano-keys.empty {
+      display: flex;
+      align-items: center;
+      justify-content: center
+    }
+
+    .midi-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      text-align: center;
+      padding: 20px
+    }
+
+    .midi-empty-ttl {
+      font-size: 15px;
+      font-weight: 700;
+      color: #e8e8ea
+    }
+
+    .midi-empty-sub {
+      font-size: 12.5px;
+      color: #9a9aa1;
+      max-width: 380px;
+      line-height: 1.5
+    }
+
+    .midi-empty button {
+      margin-top: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #f4f4f5;
+      background: #2c2c30;
+      border: 1px solid #45454b;
+      border-radius: 7px;
+      padding: 7px 14px;
+      cursor: pointer
+    }
+
+    .midi-empty button:hover { background: #38383e }
+
+    /* The connection button. It states the device layer's answer to "is a
+       piano attached" as a word, not only as a coloured dot, and clicking it
+       retries — a keyboard switched on after the app started, or an access
+       prompt that was dismissed, both recover from here. */
+    .dock-head .midi-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 10px;
+      height: 28px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink-2);
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 7px;
+      cursor: pointer;
+      white-space: nowrap
+    }
+
+    .dock-head .midi-btn:hover {
+      color: var(--ink)
+    }
+
+    .dock-head .midi-btn:disabled {
+      opacity: .55;
+      cursor: default
+    }
+
+    .dock-head .midi-btn .midi-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #d8513a;
+      box-shadow: 0 0 5px #d8513a;
+      transition: background-color .2s, box-shadow .2s
+    }
+
+    /* The monitor's report. Monospace and pre-wrapped, because it is columns
+       of counts and hex and it is meant to be copied out intact. */
+    .mon-log {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 11.5px;
+      line-height: 1.5;
+      color: var(--ink-2);
+      white-space: pre;
+      overflow-x: auto;
+      margin: 0;
+      user-select: text
+    }
+
+    .mon-acts {
+      margin-left: auto;
+      display: inline-flex;
+      gap: 6px
+    }
+
+    .mon-btn {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--ink-2);
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 7px;
+      padding: 3px 10px;
+      cursor: pointer
+    }
+
+    .mon-btn:hover {
+      color: var(--ink)
+    }
+
+    .midi-caps {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px;
+      color: var(--muted, #8a8a8e);
+      white-space: nowrap;
+      letter-spacing: .02em
+    }
+
+    .dock-head .midi-btn.live .midi-dot {
+      background: #3fb06a;
+      box-shadow: 0 0 5px #3fb06a
+    }
+
+    /* Access not granted / not supported: neither connected nor disconnected. */
+    .dock-head .midi-btn.idle .midi-dot {
+      background: var(--ink-3);
+      box-shadow: none
+    }
+
+    .seg {
+      display: flex;
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 7px;
+      padding: 2px;
+      gap: 2px
+    }
+
+    .seg button {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink-2);
+      background: none;
+      border: none;
+      padding: 6px 11px;
+      border-radius: 5px;
+      cursor: pointer
+    }
+
+    .seg button.active {
+      background: var(--active-bg);
+      color: var(--active-fg)
+    }
+
+    .dock-body {
+      display: flex;
+      gap: 14px;
+      align-items: flex-end
+    }
+
+    .piano-wrap {
+      flex: 1;
+      min-width: 0
+    }
+
+    .piano {
+      position: relative;
+      height: 180px;
+      display: flex;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #0f0f10
+    }
+
+    .piano-keys {
+      position: relative;
+      flex: 1;
+      display: flex;
+      width: 100%
+    }
+
+    .wkey .sv {
+      font-size: 22px;
+      font-weight: 800;
+      color: #1c1c1e;
+      margin-bottom: 14px;
+      line-height: 1;
+      pointer-events: none
+    }
+
+    .bkey .sv {
+      font-size: 15px;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 6px;
+      line-height: 1;
+      pointer-events: none
+    }
+
+    /* legacy .tcell styles kept for other views — no-op here */
+    .tcell .tlabel {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: .02em;
+      line-height: 1
+    }
+
+    .tcell .tlabel sub {
+      font-size: 11px;
+      font-weight: 700;
+      vertical-align: sub
+    }
+
+    .tcell .tstripe {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 4px
+    }
+
+    .zone {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: "Hanken Grotesk", sans-serif;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: #fff;
+      text-shadow: 0 1px 1px rgba(0,0,0,.6)
+    }
+
+    .zone.mandra { background: linear-gradient(180deg, #3f63bf, #2a4383) }
+    .zone.madhya { background: linear-gradient(180deg, #3f9a5c, #266438) }
+    .zone.taara  { background: linear-gradient(180deg, #d8513a, #8f3524) }
+
+    /* Coloured divider posts between sections — matches the section on
+       the LEFT of each divider, painted over both zone strip and keys. */
+    .section-divider {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 6px;
+      z-index: 20;
+      pointer-events: none;
+      box-shadow: 0 0 6px rgba(0,0,0,.7)
+    }
+    .section-divider.left  { background: #1a2a55 }
+    .section-divider.right { background: #6d2517 }
+
+    .piano-wrap { overflow: hidden }
+
+    .sa-picker {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      padding: 0 10px;
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 7px;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--ink-2);
+      letter-spacing: .06em
+    }
+
+    .sa-picker select {
+      background: none;
+      border: none;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 0 2px;
+      outline: none
+    }
+
+    .sa-picker select option { background: var(--pop); color: var(--ink) }
+
+    .wkey {
+      position: relative;
+      flex: 1;
+      background: linear-gradient(180deg, #fff, #f1f1f1);
+      border-right: 1px solid #cfcfcf;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      align-items: center;
+      user-select: none;
+      overflow: hidden
+    }
+
+    .wkey:last-child { border-right: none }
+    .wkey:active, .wkey.down {
+      background: linear-gradient(180deg, #e9eef9, #d7e1f3)
+    }
+
+    .wkey.sa-key { background: linear-gradient(180deg, #ffe9a8, #ffce55) }
+    .wkey.sa-key:active, .wkey.sa-key.down { background: linear-gradient(180deg, #ffcd52, #f4b400) }
+
+    /* A key being played ON THE CONNECTED DEVICE — not the same thing as
+       :active/.down, which is the mouse pressing an on-screen key. It is
+       deliberately louder than that press state: while this is lit the player
+       is looking at their hands or at the staff, so the cue has to carry at
+       the edge of vision rather than be a shade of grey.
+
+       It is painted with --accent so it follows the theme, and it has to win
+       over .unmapped — that hatched fill has the same specificity and sits
+       ABOVE this in source order, so a key outside the writable window would
+       otherwise stay hatched while it is sounding. Those keys light too: they
+       are real keys, and one you can hear yourself playing that stays dark
+       reads as a dead key. The labels go white because the svara letter is
+       near-black and would disappear into the accent.
+
+       Qualified with .piano-keys purely for SPECIFICITY. `.wkey.unmapped` and
+       `.wkey.down` are both (0,2,0), and a second copy of the .down rule sits
+       further down this stylesheet — so an equally-specific .playing would win
+       or lose on source position alone, depending on which copy came last. The
+       extra class makes it (0,3,0) and settles it wherever the block moves. */
+    .piano-keys .wkey.playing {
+      background: linear-gradient(180deg, rgba(255, 255, 255, .3), rgba(255, 255, 255, 0)), var(--accent)
+    }
+
+    .piano-keys .bkey.playing {
+      background: linear-gradient(180deg, rgba(255, 255, 255, .32), rgba(255, 255, 255, 0)), var(--accent);
+      filter: none
+    }
+
+    .piano-keys .wkey.playing .sv, .piano-keys .wkey.playing .nn,
+    .piano-keys .wkey.playing .off, .piano-keys .bkey.playing .sv,
+    .piano-keys .bkey.playing .nn, .piano-keys .bkey.playing .off {
+      color: #fff
+    }
+
+    .wkey .oct-lbl {
+      position: absolute;
+      bottom: 2px;
+      font-size: 8px;
+      color: #b0b0b0;
+      font-family: "JetBrains Mono", monospace;
+      pointer-events: none
+    }
+
+    .wkey:last-child {
+      border-right: none
+    }
+
+    .wkey:active,
+    .wkey.down {
+      background: linear-gradient(180deg, #e9eef9, #d7e1f3)
+    }
+
+    .wkey .kc {
+      margin-top: 9px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px;
+      font-weight: 700;
+      color: #9a9a9a;
+      border: 1px solid #dcdcdc;
+      border-radius: 4px;
+      padding: 0 5px;
+      pointer-events: none
+    }
+
+    .wkey .lab {
+      margin-top: auto;
+      font-size: 15px;
+      font-weight: 700;
+      color: #2a2a2a;
+      pointer-events: none;
+      line-height: 1
+    }
+
+    .wkey .full {
+      font-size: 8px;
+      color: #aaa;
+      margin-top: 1px;
+      pointer-events: none
+    }
+
+    .wkey .tint {
+      height: 5px;
+      width: 100%;
+      margin-top: 6px;
+      pointer-events: none
+    }
+
+    .bkey {
+      position: absolute;
+      top: 0;
+      width: 8.6%;
+      height: 55%;
+      background: linear-gradient(180deg, #3a3a3a, #111);
+      border-radius: 0 0 5px 5px;
+      z-index: 3;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      align-items: center;
+      padding-bottom: 6px;
+      user-select: none;
+      box-shadow: 0 3px 5px rgba(0, 0, 0, .4)
+    }
+
+    .bkey:active, .bkey.down { filter: brightness(1.3) }
+
+    .bkey.sa-key { background: linear-gradient(180deg, #b57a10, #6a4600) }
+
+    .bkey:active,
+    .bkey.down {
+      filter: brightness(1.3)
+    }
+
+    .bkey .lab {
+      font-size: 11px;
+      color: #fff;
+      font-weight: 700;
+      pointer-events: none
+    }
+
+    .bkey .full {
+      font-size: 7.5px;
+      color: #bdbdbd;
+      pointer-events: none
+    }
+
+    .bkey .tint {
+      position: absolute;
+      bottom: 0;
+      height: 4px;
+      width: 100%;
+      border-radius: 0 0 5px 5px;
+      pointer-events: none
+    }
+
+    .kbmap {
+      width: 252px;
+      flex: 0 0 auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      background: var(--chrome-2);
+      min-width: 0
+    }
+
+    .kbmap-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px
+    }
+
+    .kbmap h4 {
+      font-size: 10px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      font-weight: 700
+    }
+
+    .kb-edit {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ink-2);
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 6px;
+      padding: 3px 8px;
+      cursor: pointer
+    }
+
+    .kb-edit:hover { color: var(--ink) }
+
+    /* The keyboard picture. Every cap the layout draws is here, the rows are
+       staggered by real key units (see KEYBOARD_LAYOUT), and every cap flexes
+       — the map is a full-width picture of the keyboard, so it has to stay in
+       proportion at whatever width the dock gives it. */
+    .keyrow {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 8px
+    }
+
+    .krow {
+      display: flex;
+      gap: 4px;
+      width: 100%
+    }
+
+    .kcap {
+      min-width: 0;
+      height: 40px;
+      border-radius: 6px;
+      background: var(--btn);
+      border: 1px solid var(--btn-border);
+      border-bottom-width: 2px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1px;
+      overflow: hidden;
+      font-family: "JetBrains Mono", monospace
+    }
+
+    .kcap .key {
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--ink-2)
+    }
+
+    .kcap .sv {
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      font-family: "Hanken Grotesk", system-ui, sans-serif
+    }
+
+    .kcap .oc {
+      font-size: 7px;
+      line-height: 1;
+      color: var(--ink-3)
+    }
+
+    /* A bound cap is the only kind you can click, and it says so. */
+    .kcap.bound {
+      cursor: pointer;
+      border-bottom-width: 3px
+    }
+
+    .kcap.bound:hover { border-color: var(--accent) }
+
+    .kcap.bound .key { color: var(--ink) }
+
+    /* Unbound caps and modifiers are drawn so the stagger is right and your
+       finger lands where the picture says — they are not the subject. */
+    .kcap.free {
+      background: var(--btn-2);
+      opacity: .5
+    }
+
+    .kcap.mod {
+      background: var(--btn-2);
+      opacity: .3
+    }
+
+    .kcap.mod .key { font-size: 9px }
+
+    /* Waiting for a keystroke. */
+    .kcap.listen {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-soft);
+      background: var(--accent-soft)
+    }
+
+    .kcap.down {
+      transform: translateY(2px);
+      border-bottom-width: 1px
+    }
+
+    .kbmap .hint {
+      font-size: 10.5px;
+      color: var(--ink-3);
+      text-align: center;
+      line-height: 1.6
+    }
+
+    .kbmap .hint b {
+      color: var(--ink-2);
+      font-family: "JetBrains Mono", monospace
+    }
+
+    .ctlbar {
+      width: 158px;
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px
+    }
+
+    .ctlbar label {
+      font-size: 9.5px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      display: block;
+      margin-bottom: 4px;
+      font-weight: 700
+    }
+
+    .actions {
+      display: flex;
+      gap: 6px
+    }
+
+    .actions button {
+      flex: 1;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink-2);
+      background: var(--btn);
+      border: 1px solid var(--btn-border);
+      border-radius: 6px;
+      padding: 7px 0;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px
+    }
+
+    .actions button:hover {
+      background: var(--hover);
+      color: var(--ink)
+    }
+
+    .actions button svg {
+      width: 13px;
+      height: 13px
+    }
+
+    #pop {
+      position: fixed;
+      z-index: 60;
+      background: var(--pop);
+      border: 1px solid var(--border-2);
+      border-radius: 10px;
+      box-shadow: 0 12px 34px rgba(0, 0, 0, .28);
+      padding: 6px;
+      min-width: 190px;
+      max-width: 320px;
+      display: none
+    }
+
+    #pop.show {
+      display: block
+    }
+
+    #pop .it {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 8px 10px;
+      border-radius: 7px;
+      font-size: 13px;
+      color: var(--ink);
+      cursor: pointer
+    }
+
+    #pop .it:hover {
+      background: var(--hover)
+    }
+
+    #pop .it .sc {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      color: var(--ink-3)
+    }
+
+    #pop .it.sel {
+      background: var(--accent-soft);
+      color: var(--accent)
+    }
+
+    #pop .hr {
+      height: 1px;
+      background: var(--border);
+      margin: 5px 4px
+    }
+
+    #pop .ttl {
+      font-size: 10.5px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      padding: 6px 10px 3px;
+      font-weight: 700
+    }
+
+    .cw-link {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 10px 8px
+    }
+
+    .cw-link .mono {
+      font-size: 12px;
+      color: var(--ink-2)
+    }
+
+    .cw-copy {
+      font-size: 11px;
+      font-weight: 700;
+      border: 1px solid var(--btn-border);
+      background: var(--btn);
+      border-radius: 6px;
+      padding: 4px 9px;
+      cursor: pointer;
+      color: var(--ink)
+    }
+
+    .cw-role {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 2px 10px 8px;
+      font-size: 12.5px;
+      color: var(--ink-2)
+    }
+
+    .cw-role .seg button {
+      font-size: 11.5px;
+      padding: 5px 10px
+    }
+
+    .cw-list {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 2px 6px
+    }
+
+    .cw-p {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 8px;
+      border-radius: 8px
+    }
+
+    .cw-p .av {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 700;
+      font-size: 12px;
+      flex: 0 0 auto
+    }
+
+    .cw-p .who {
+      flex: 1;
+      line-height: 1.2
+    }
+
+    .cw-p .who b {
+      font-size: 13px
+    }
+
+    .cw-p .who small {
+      display: block;
+      font-size: 11px;
+      color: var(--ink-3)
+    }
+
+    .cw-p .pres {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--ink-3);
+      flex: 0 0 auto
+    }
+
+    .cw-p .pres.on {
+      background: #3fb06a
+    }
+
+    .cw-note {
+      font-size: 11px;
+      color: var(--ink-3);
+      padding: 6px 10px 2px
+    }
+
+    @keyframes pop {
+      0% {
+        transform: scale(.3);
+        opacity: 0
+      }
+
+      60% {
+        transform: scale(1.25)
+      }
+
+      100% {
+        transform: scale(1)
+      }
+    }
+
+    @media(max-width:1160px) {
+      .kbmap {
+        display: none
+      }
+    }
+
+    @media(max-width:880px) {
+      .work {
+        grid-template-columns: 1fr
+      }
+
+      .tools,
+      .inspect {
+        display: none
+      }
+
+      .ctlbar {
+        display: none
+      }
+    }
+
+    /* Print at true size: A4, no browser margin (the sheet supplies its own
+       1.5cm), screen zoom reset so the staff measures exactly 18.00cm. */
+    @page {
+      size: A4 portrait;
+      margin: 0
+    }
+
+    /* ---------- notation legend ---------- */
+
+    .lgd-scrim {
+      position: fixed;
+      inset: 0;
+      background: rgba(12, 12, 16, .55);
+      backdrop-filter: blur(2px);
+      z-index: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px
+    }
+
+    .lgd-scrim[hidden] {
+      display: none
+    }
+
+    .lgd {
+      background: var(--panel);
+      color: var(--ink);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, .45);
+      width: min(940px, 100%);
+      max-height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden
+    }
+
+    .lgd-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      background: var(--chrome)
+    }
+
+    .lgd-head b {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: .01em
+    }
+
+    .lgd-x {
+      background: none;
+      border: 0;
+      color: var(--ink-2);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 6px;
+      display: grid;
+      place-items: center
+    }
+
+    .lgd-x svg {
+      width: 18px;
+      height: 18px
+    }
+
+    .lgd-x:hover {
+      background: var(--chrome-2);
+      color: var(--ink)
+    }
+
+    /* ---------- about ---------- */
+
+    /* The account dialog. Narrower than the legend because it is a form and a
+       form read across a wide card is a form whose label and field lose each
+       other. */
+    .lgd.auth {
+      width: 380px;
+      max-width: 92vw;
+    }
+
+    .auth-body {
+      padding: 18px 20px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .auth-field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .auth-field span {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink-2);
+    }
+
+    .auth-field input {
+      background: var(--bg-2);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      color: var(--ink);
+      font: inherit;
+      font-size: 14px;
+      padding: 9px 11px;
+    }
+
+    .auth-field input:focus {
+      border-color: var(--accent);
+      outline: none;
+    }
+
+    .auth-field input:disabled {
+      opacity: .55;
+    }
+
+    .auth-go {
+      background: var(--accent);
+      border: 0;
+      border-radius: 7px;
+      color: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      margin-top: 2px;
+      padding: 10px;
+    }
+
+    .auth-go:hover {
+      filter: brightness(1.08);
+    }
+
+    .auth-go:disabled {
+      cursor: default;
+      opacity: .55;
+    }
+
+    .auth-go.ghost {
+      background: var(--btn-2);
+      color: var(--ink);
+    }
+
+    .auth-hint {
+      color: var(--ink-2);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .auth-alt {
+      color: var(--ink-2);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .auth-link {
+      background: none;
+      border: 0;
+      color: var(--accent);
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+      padding: 0;
+      text-decoration: underline;
+    }
+
+    /* One line for every outcome, in place, rather than an alert() that has to
+       be dismissed before the field it is about can be corrected. */
+    .auth-note {
+      border-radius: 6px;
+      font-size: 12.5px;
+      line-height: 1.45;
+      padding: 8px 10px;
+    }
+
+    .auth-note.error {
+      background: color-mix(in srgb, #d9534f 16%, transparent);
+      color: #d9534f;
+    }
+
+    .auth-note.info {
+      background: var(--btn-2);
+      color: var(--ink-2);
+    }
+
+    .auth-who {
+      align-items: center;
+      display: flex;
+      gap: 11px;
+    }
+
+    .auth-who b {
+      color: var(--ink);
+      display: block;
+      font-size: 14px;
+    }
+
+    .auth-who small {
+      color: var(--ink-2);
+      font-size: 12px;
+    }
+
+    .auth-av {
+      align-items: center;
+      background: var(--accent);
+      border-radius: 50%;
+      color: #fff;
+      display: flex;
+      font-size: 17px;
+      font-weight: 700;
+      height: 40px;
+      justify-content: center;
+      width: 40px;
+    }
+
+    .auth-role {
+      color: var(--ink-2);
+      font-size: 12.5px;
+    }
+
+    /* The header button carries the state, so the account is visible without
+       opening anything: an outline avatar signed out, a filled initial in. */
+    #profileBtn.signed-in {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .lgd.abt {
+      width: min(420px, 100%)
+    }
+
+    .abt-body {
+      padding: 26px 28px 22px;
+      text-align: center
+    }
+
+    /* The lockup is never inverted — inversion would turn the SCORER pill from
+       yellow to blue — so in dark theme it gets its own light card to sit on,
+       the same exemption the printed sheet's emblem has. */
+    .abt-art {
+      background: #fff;
+      border-radius: 10px;
+      padding: 18px 20px;
+      display: grid;
+      place-items: center
+    }
+
+    .abt-art img {
+      width: 132px;
+      height: auto;
+      display: block
+    }
+
+    .abt-tag {
+      margin-top: 16px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      color: var(--ink)
+    }
+
+    .abt-desc {
+      margin-top: 10px;
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: var(--ink-2)
+    }
+
+    .abt-ver {
+      margin-top: 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink)
+    }
+
+    .abt-vers {
+      margin-top: 3px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10.5px;
+      color: var(--ink-2)
+    }
+
+    .abt-legal {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--ink-2)
+    }
+
+    /* Two columns, flowed rather than gridded: the sections are very unequal in
+       height, and a grid would leave a column-high hole beside the tallest one.
+       Sections never break across the fold. */
+    /* Key bindings dialog. The bindings are a 3x7 table — sthayi down, svara
+       across — so the editor is that table at full size: the svara is named
+       once in the column head and each cell shows only what is being edited,
+       the key. */
+    .kb-dlg {
+      max-width: 900px;
+      width: calc(100vw - 64px)
+    }
+
+    /* .lgd-body is the LEGEND's body: two newspaper columns. The bindings
+       editor is a table and must not be split down the middle. */
+    .kb-dlg .lgd-body {
+      columns: auto;
+      padding: 20px 22px 22px
+    }
+
+    .kb-steps {
+      display: flex;
+      gap: 10px;
+      list-style: none;
+      counter-reset: kb;
+      margin-bottom: 14px
+    }
+
+    .kb-steps li {
+      counter-increment: kb;
+      flex: 1 1 0;
+      font-size: 12.5px;
+      color: var(--ink-2);
+      line-height: 1.45;
+      background: var(--chrome-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 11px 9px 32px;
+      position: relative
+    }
+
+    .kb-steps li::before {
+      content: counter(kb);
+      position: absolute;
+      left: 10px;
+      top: 9px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--ink-3);
+      color: var(--page);
+      font-size: 10px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center
+    }
+
+    /* Says what the editor is waiting for. Silent until something is armed,
+       so the dialog is not shouting at rest. */
+    .kb-status {
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border-radius: 7px;
+      margin-bottom: 12px;
+      opacity: 0;
+      transition: opacity .12s
+    }
+
+    .kb-status.on { opacity: 1 }
+
+    .kb-grid-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px
+    }
+
+    .kb-grid-head { margin-bottom: 6px }
+
+    .kb-oct {
+      width: 92px;
+      flex: 0 0 92px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--ink-2);
+      text-transform: uppercase;
+      letter-spacing: .05em
+    }
+
+    .kb-oct b { color: var(--ink-3); font-weight: 700 }
+
+    /* The column head is the only place a svara is named, so it carries the
+       svara colour the staff and the key map use. */
+    .kb-col {
+      flex: 1 1 0;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--sv);
+      padding-bottom: 2px;
+      border-bottom: 2px solid var(--sv)
+    }
+
+    .kb-cell {
+      flex: 1 1 0;
+      min-width: 0;
+      height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--btn);
+      border: 1px solid var(--btn-border);
+      border-bottom: 3px solid var(--sv);
+      border-radius: 9px;
+      cursor: pointer
+    }
+
+    .kb-cell:hover {
+      border-color: var(--accent);
+      border-bottom-color: var(--accent)
+    }
+
+    .kb-cell.listen {
+      border-color: var(--accent);
+      border-bottom-color: var(--accent);
+      background: var(--accent-soft)
+    }
+
+    .kb-k {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--ink);
+      line-height: 1
+    }
+
+    /* An unassigned slot is a legal state — a steal leaves one behind — so it
+       is labelled rather than left blank and mistaken for a rendering fault. */
+    .kb-empty {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ink-3);
+      font-family: "Hanken Grotesk", system-ui, sans-serif
+    }
+
+    .kb-press {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent)
+    }
+
+    .kb-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border)
+    }
+
+    .kb-note {
+      font-size: 12px;
+      color: var(--ink-3);
+      line-height: 1.5;
+      margin: 0
+    }
+
+    .kb-foot button {
+      flex: 0 0 auto;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink-2);
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 7px;
+      padding: 8px 14px;
+      cursor: pointer
+    }
+
+    .kb-foot button:hover:not(:disabled) { color: var(--ink) }
+
+    .kb-foot button:disabled { opacity: .45; cursor: default }
+
+    /* Time signature dialog. One narrow column of fields — it asks for two
+       things — so it opts out of .lgd-body's newspaper columns the same way
+       the key-bindings table does. */
+    .ts-dlg {
+      max-width: 460px;
+      width: calc(100vw - 64px)
+    }
+
+    .ts-dlg .lgd-body {
+      columns: auto;
+      padding: 18px 20px 20px
+    }
+
+    .ts-f {
+      display: grid;
+      grid-template-columns: 84px 1fr;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px
+    }
+
+    .ts-f span {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink-2)
+    }
+
+    .ts-f input {
+      font: inherit;
+      font-size: 13px;
+      color: var(--ink);
+      background: var(--chrome-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 7px;
+      padding: 8px 10px
+    }
+
+    .ts-f input:focus {
+      outline: none;
+      border-color: var(--accent)
+    }
+
+    .ts-fr {
+      display: flex;
+      gap: 8px
+    }
+
+    .ts-fr input {
+      flex: 1;
+      min-width: 0
+    }
+
+    .ts-f select {
+      font: inherit;
+      font-size: 13px;
+      color: var(--ink);
+      background: var(--chrome-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 7px;
+      padding: 8px 8px
+    }
+
+    .ts-f select:focus {
+      outline: none;
+      border-color: var(--accent)
+    }
+
+    /* What the formula currently parses to, in words. It is the only feedback
+       between typing and Save, so a bad formula reads as a sentence rather
+       than as a disabled button with no reason given. */
+    .ts-preview {
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--ink-2);
+      background: var(--chrome-2);
+      border-radius: 7px;
+      padding: 9px 11px;
+      margin: 4px 0 10px
+    }
+
+    .ts-preview.bad {
+      color: #b8442b
+    }
+
+    .ts-note {
+      font-size: 11.5px;
+      line-height: 1.5;
+      color: var(--ink-2);
+      margin-bottom: 14px
+    }
+
+    .ts-foot {
+      display: flex;
+      align-items: center;
+      gap: 8px
+    }
+
+    .ts-sp {
+      flex: 1 1 auto
+    }
+
+    .ts-foot button {
+      flex: 0 0 auto;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink-2);
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 7px;
+      padding: 8px 14px;
+      cursor: pointer
+    }
+
+    .ts-foot button:hover:not(:disabled) { color: var(--ink) }
+
+    .ts-foot button:disabled { opacity: .45; cursor: default }
+
+    .ts-foot .ts-primary {
+      color: #fff;
+      background: var(--accent);
+      border-color: transparent
+    }
+
+    .ts-foot .ts-primary:hover:not(:disabled) { color: #fff; filter: brightness(1.06) }
+
+    .ts-foot .ts-del { color: #b8442b }
+
+    /* A row in the T.S. picker. The edit and delete controls only appear on
+       custom metres, and only under the pointer — the list is read far more
+       often than it is edited. */
+    #pop .ts-it {
+      position: relative;
+      padding-right: 54px
+    }
+
+    #pop .ts-tools {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: none;
+      gap: 2px
+    }
+
+    #pop .ts-it:hover .ts-tools { display: flex }
+
+    #pop .ts-mini {
+      font: inherit;
+      font-size: 11px;
+      line-height: 1;
+      color: var(--ink-2);
+      background: transparent;
+      border: 0;
+      border-radius: 5px;
+      padding: 4px 5px;
+      cursor: pointer
+    }
+
+    #pop .ts-mini:hover {
+      color: var(--ink);
+      background: var(--chrome-2)
+    }
+
+    .lgd-body {
+      overflow-y: auto;
+      padding: 18px;
+      columns: 2;
+      column-gap: 26px
+    }
+
+    .lgd-body section {
+      break-inside: avoid;
+      margin-bottom: 20px
+    }
+
+    .lgd-body section.wide {
+      column-span: all
+    }
+
+    .lgd-body h4 {
+      margin: 0 0 10px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--ink-2)
+    }
+
+    .lgd-body p {
+      margin: 10px 0;
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: var(--ink-2);
+      max-width: 68ch
+    }
+
+    .lgd-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 6px 0
+    }
+
+    .lgd-row b {
+      display: block;
+      font-size: 13px;
+      font-weight: 700
+    }
+
+    .lgd-row span {
+      display: block;
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--ink-2)
+    }
+
+    /* Notation ink is near-black, so every glyph sits on paper, not on the
+       panel — the same ground it has on the sheet. */
+    .lgd-art {
+      flex: 0 0 auto;
+      width: 58px;
+      min-height: 54px;
+      display: grid;
+      place-items: center;
+      background: #fff;
+      border: 1px solid #d9d4c8;
+      border-radius: 8px;
+      padding: 4px
+    }
+
+    .lgd-rest {
+      height: 34px
+    }
+
+    .lgd-rep {
+      height: 38px
+    }
+
+    .lgd-fig {
+      background: #fff;
+      border: 1px solid #d9d4c8;
+      border-radius: 8px;
+      padding: 10px;
+      display: flex;
+      justify-content: center;
+      overflow-x: auto
+    }
+
+    .lgd-staff {
+      width: 100%;
+      height: auto
+    }
+
+    .lgd-tag {
+      font-family: "Hanken Grotesk", sans-serif;
+      font-size: 9px;
+      font-weight: 600;
+      fill: #6b6660
+    }
+
+    .lgd-tag.mid {
+      text-anchor: middle
+    }
+
+    .lgd-tag.end {
+      text-anchor: end
+    }
+
+    /* The svara names on the pitch chart — small, bold and centred on the goli,
+       the way they are lettered on the printed chart. */
+    .lgd-name {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      text-anchor: middle;
+      fill: #1d1d1b
+    }
+
+    /* The same three marks the row gutter prints — in notation ink, because
+       like every other tile they are shown on paper. */
+    .lgd-sth {
+      display: block;
+      color: #1d1d1b
+    }
+
+    .lgd-sth.up {
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-bottom: 12px solid currentColor
+    }
+
+    .lgd-sth.mid {
+      width: 13px;
+      height: 13px;
+      background: currentColor
+    }
+
+    .lgd-sth.dn {
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 12px solid currentColor
+    }
+
+    @media (max-width: 900px) {
+      .lgd-body {
+        columns: 1
+      }
+    }
+
+    @media print {
+
+      .menubar,
+      .toolbar,
+      .ctlbar,
+      .tools,
+      .dock,
+      .kbmap {
+        display: none !important
+      }
+
+      html,
+      body,
+      .app,
+      .work,
+      .stage {
+        background: #fff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: block !important;
+        overflow: visible !important;
+        height: auto !important
+      }
+
+      #zoomContainer {
+        width: 21cm !important;
+        height: auto !important
+      }
+
+      .sheetwrap {
+        transform: none !important;
+        width: 21cm !important
+      }
+
+      .sheet {
+        max-width: 21cm !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        min-height: 0 !important
+      }
+
+      .srow {
+        break-inside: avoid
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+
+    <div class="menubar" id="menubar">
+      <button class="app-brand" id="appBrand" title="About IYDANI SCORER" aria-label="About IYDANI SCORER">
+        <img src="./brand/iydani-mark.svg" alt="">
+        <span class="app-brand-name">IYDANI</span>
+        <span class="app-brand-chip">SCORER</span>
+      </button>
+      <span class="app-brand-sep"></span>
+      <button class="m" data-menu="File">File</button><button class="m" data-menu="Edit">Edit</button>
+      <button class="m" data-menu="View">View</button><button class="m" data-menu="Plugins">Plugins</button>
+      <button class="m" data-menu="Help">Help</button>
+      <div class="grow"></div>
+      <div class="net-status" id="netStatus" title="Connection status"><span class="net-dot"></span><span
+          class="net-text">Online</span></div>
+      <button class="mbtn accent" id="coworkBtn" title="Collaborate live"><svg viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="1.8">
+          <circle cx="9" cy="8" r="3" />
+          <path d="M3 20a6 6 0 0 1 12 0" />
+          <circle cx="17" cy="9" r="2.4" />
+          <path d="M15.5 20a5 5 0 0 1 6.5-4.7" />
+        </svg>Cowork</button>
+
+      <button class="mbtn" id="langBtn" title="Language"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.7">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18" />
+        </svg><span id="langLabel">English</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2">
+          <path d="M6 9l6 6 6-6" />
+        </svg></button>
+      <button class="mbtn icon" id="themeBtn" title="Light / dark"><svg id="themeIcon" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="1.8"></svg></button>
+      <button class="mbtn icon" id="profileBtn" title="Profile"><svg viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="1.8">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
+        </svg></button>
+    </div>
+
+    <div class="toolbar">
+      <button class="ico" id="bNew" title="New (Ctrl+N)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.7">
+          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+          <path d="M14 3v5h5M12 11v6M9 14h6" />
+        </svg></button>
+      <button class="ico" id="bOpen" title="Open varase"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.7">
+          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        </svg></button>
+      <button class="ico" id="bSave" title="Save (.json)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.7">
+          <path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+          <path d="M8 3v5h7M8 21v-7h8v7" />
+        </svg></button>
+      <span class="sep"></span>
+      <button class="ico" id="bUndo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.8">
+          <path d="M9 14L4 9l5-5" />
+          <path d="M4 9h11a6 6 0 0 1 0 12H9" />
+        </svg></button>
+      <button class="ico" id="bRedo" title="Redo (Ctrl+Y)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.8">
+          <path d="M15 14l5-5-5-5" />
+          <path d="M20 9H9a6 6 0 0 0 0 12h6" />
+        </svg></button>
+      <button class="ico" id="bExport" title="Export SVG"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.8">
+          <path d="M12 3v12M8 11l4 4 4-4" />
+          <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+        </svg></button>
+      <button class="ico" id="bPdf" title="Export PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.7">
+          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+          <path d="M14 3v5h5" />
+          <text x="12" y="17" text-anchor="middle" font-size="6" font-weight="700" fill="currentColor" stroke="none" font-family="Arial">PDF</text>
+        </svg></button>
+      <button class="ico" id="bMp3" title="Export MP3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.7">
+          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+          <path d="M14 3v5h5" />
+          <text x="12" y="17" text-anchor="middle" font-size="5.4" font-weight="700"
+            fill="currentColor" stroke="none" font-family="Arial">MP3</text>
+        </svg></button>
+      <button class="ico" id="bMidi" title="Export MIDI"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.7">
+          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+          <path d="M14 3v5h5" />
+          <text x="12" y="17" text-anchor="middle" font-size="5" font-weight="700"
+            fill="currentColor" stroke="none" font-family="Arial">MID</text>
+        </svg></button>
+      <span class="sep"></span>
+      <div class="zoom" id="zoomBtn"><b class="mono" id="zoomVal">100%</b><span class="car"><svg width="12" height="12"
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 9l6 6 6-6" />
+          </svg></span></div>
+      <button class="pillbtn" id="pageViewBtn" title="Page view"><svg viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="1.7">
+          <rect x="4" y="3" width="16" height="18" rx="2" />
+          <path d="M8 7h8M8 11h8M8 15h5" />
+        </svg>Page View</button>
+      <button class="pillbtn" id="legendBtn" title="Write each note's svara name on the sheet">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+          <path d="M3 12l7-7h7a4 4 0 0 1 4 4v7l-7 7z" />
+          <circle cx="16.5" cy="7.5" r="1.3" />
+        </svg>Legend</button>
+      <span class="sep"></span>
+      <div class="transport">
+        <button class="ico" id="bStart" title="To start"><svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M7 5h2v14H7zM20 5v14l-9-7z" />
+          </svg></button>
+        <button class="ico" id="playBtn" title="Play (Space)"><svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z" />
+          </svg></button>
+        <button class="ico" id="bStop" title="Stop"><svg viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="6" width="12" height="12" rx="1.5" />
+          </svg></button>
+        <button class="ico" id="reloadBtn" title="Reload preset"><svg viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.8">
+            <path d="M21 12a9 9 0 1 1-3-6.7" />
+            <path d="M21 3v5h-5" />
+          </svg></button>
+        <button class="ico big" id="metroBtn" title="Metronome (click on/off)"><svg viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.7">
+            <path d="M8 3h8l3 18H5z" />
+            <path d="M12 17V8l4-3" />
+          </svg></button>
+      </div>
+      <!-- Options filled in by installMetronomeSounds() from the SOUNDS table. -->
+      <label class="sa-picker" title="Metronome sound">SOUND
+        <select id="metroSound"></select>
+      </label>
+      <div class="bpm-ctl" title="Playback tempo">
+        <span class="bpm-label">BPM</span>
+        <button id="bpmDown" title="Decrease tempo">−</button>
+        <input id="bpmVal" type="number" inputmode="numeric" value="72" min="20" max="240" step="1" />
+        <button id="bpmUp" title="Increase tempo">+</button>
+      </div>
+      <div class="grow"></div>
+      <div class="group" id="fillModes" title="Who fills the silence in a box">
+        <button class="pillbtn on" data-fill="auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7">
+            <rect x="3" y="6" width="18" height="12" rx="2" />
+            <path d="M7 10v4M11 10v4M15 10v4M19 10v4" />
+          </svg>Auto fill</button>
+        <button class="pillbtn" data-fill="metro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7">
+            <path d="M8 3h8l3 18H5z" />
+            <path d="M12 17V8l4-3" />
+          </svg>Metro fill</button>
+      </div>
+      <div class="group" id="inputModes">
+        <button class="pillbtn" data-mode="keyboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7">
+            <rect x="2" y="6" width="20" height="12" rx="2" />
+            <path d="M6 10h.01M10 10h.01M14 10h.01M8 14h8" />
+          </svg>Key map</button>
+        <button class="pillbtn on" data-mode="piano"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7">
+            <rect x="3" y="5" width="18" height="14" rx="1.5" />
+            <path d="M8 5v9M13 5v9M18 5v9" />
+          </svg>Piano</button>
+        <button class="pillbtn" data-mode="midi"><svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9 18V6l10-2v12" stroke="currentColor" stroke-width="1.7" fill="none" />
+            <circle cx="6.5" cy="18" r="2.5" />
+            <circle cx="16.5" cy="16" r="2.5" />
+          </svg>MIDI</button>
+      </div>
+      <span class="sep"></span>
+      <div class="group" id="notationSys">
+        <button class="pillbtn on" data-sys="DNG">DNG</button><button class="pillbtn" data-sys="DNR">DNR</button>
+      </div>
+    </div>
+
+    <div class="toolbar2">
+      <span class="t2lab">Repeat</span>
+      <div class="group" id="braceTools"></div>
+      <span class="sep"></span>
+      <button class="brace" id="clearBars">Clear marks</button>
+      <div class="grow"></div>
+      <button class="pillbtn" id="timeSigBtn">Time Signatures<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2">
+          <path d="M6 9l6 6 6-6" />
+        </svg></button>
+    </div>
+
+    <div class="tabs" id="tabs"></div>
+
+    <div class="work">
+      <aside class="tools">
+        <div class="tools-title">Tools</div>
+        <div class="tsec">
+          <div class="head">Sound Symbol <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M6 9l6 6 6-6" />
+            </svg></div>
+          <div class="tgrid" id="soundGrid"></div>
+        </div>
+        <div class="tsec">
+          <div class="head">Rest Symbol <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M6 9l6 6 6-6" />
+            </svg></div>
+          <div class="tgrid" id="restGrid"></div>
+        </div>
+        <div class="tsec">
+          <div class="head">Repeat <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M6 9l6 6 6-6" />
+            </svg></div>
+          <div class="tgrid" id="repeatGrid"></div>
+        </div>
+        <div class="tsec">
+          <div class="head">Octave Symbol <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M6 9l6 6 6-6" />
+            </svg></div>
+          <div class="tgrid oct" id="octGrid"></div>
+        </div>
+        <!-- Layout tools change how the sheet is BROKEN UP, not what is on it.
+             Break is the only one so far: arm it and click a division. -->
+        <div class="tsec">
+          <div class="head">Layout <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M6 9l6 6 6-6" />
+            </svg></div>
+          <div class="tgrid" id="layoutGrid"></div>
+          <div class="brkinfo" id="brkInfo"></div>
+        </div>
+      </aside>
+
+      <main class="stage">
+        <div id="zoomContainer" style="margin: 0 auto; width: 21cm;">
+          <div class="sheetwrap" id="sheetwrap">
+            <div class="sheet">
+              <div class="sheet-head">
+                <div class="emblem">
+                    <svg viewBox="0 0 130 130" fill="none" xmlns="http://www.w3.org/2000/svg" shape-rendering="geometricPrecision">
+                      <rect x="2" y="2" width="126" height="126" rx="63" fill="#FEF4B7"/>
+                      <rect x="2" y="2" width="126" height="126" rx="63" stroke="black" stroke-width="4"/>
+                      <circle cx="43" cy="49" r="7.5" fill="#FEF4B7" stroke="black" stroke-width="3"/>
+                      <circle cx="88" cy="78" r="8" fill="black" stroke="black" stroke-width="2"/>
+                      <path d="M55.3754 26C58.8754 30.6667 65.2754 42.3 62.8754 51.5C59.8754 63 53.3754 67 55.3754 81C56.9754 92.2 65.0421 101.333 68.8754 104.5" stroke="black" stroke-width="4"/>
+                      <path d="M69.3517 30C72.6309 34.3992 78.6271 45.3656 76.3785 54.0382C73.5678 64.879 67.4779 68.6497 69.3517 81.8471C70.8508 92.4051 78.4085 101.015 82 104" stroke="black" stroke-width="4"/>
+                    </svg>
+                </div>
+                <!-- The rule that runs from the emblem to the tone legend. It is
+                     the whole of the printed header: no scale or tala caption,
+                     because the legend states the scale and T.S. states the
+                     metre. -->
+                <span class="headrule"></span>
+                <table class="tones" id="tonesTable"></table>
+              </div>
+              <!-- The four fields the printed sheet carries under its header:
+                   what the piece is on the left, what it is played in on the
+                   right. Only the title is typed — tempo, key and time follow
+                   the app's own state, so the sheet cannot claim a tempo the
+                   transport is not playing. -->
+              <div class="sheet-meta">
+                <div class="metaline"><span class="lab">Title :</span><span class="val" id="titleVal"
+                    contenteditable="true">SARALE VARASE</span></div>
+                <div class="metaline right"><span class="lab">K.S. :</span><span class="val" id="ksVal">C</span></div>
+                <div class="metaline"><span class="lab">Tempo :</span><span class="val" id="tempoVal">72</span></div>
+                <div class="metaline right"><span class="lab">T.S. :</span><span class="val" id="tsVal">4/4</span></div>
+              </div>
+              <div class="score-rows" id="score"></div>
+              <div class="pagenum"><span>1</span></div>
+              <div class="brand">© Lyptron</div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <aside class="inspect">
+        <div class="tools-title">Section Timing</div>
+        <div id="inspectBody"></div>
+      </aside>
+    </div>
+
+    <footer class="dock">
+      <div class="dock-head">
+        <span class="label" id="dockLabel">Piano Input</span>
+        <div class="seg" id="octSeg2"><button data-oct="-1">Mandra</button><button data-oct="0"
+            class="active">Madhya</button><button data-oct="1">Taara</button></div>
+        <select id="pianoSpan" class="span-sel" title="How many piano keys to show"></select>
+        <select id="midiKeys" class="span-sel" title="How many keys your MIDI keyboard has" hidden></select>
+        <div class="status" id="inputStatus"><span class="dot"></span><span id="statusText">On-screen piano — no MIDI device
+            connected</span></div>
+        <!-- What the connected keyboard has been OBSERVED to do. Web MIDI
+             reports no capabilities at all, so everything here was measured
+             from what the device actually sent, and each part appears only
+             once it is known rather than being guessed. -->
+        <span class="midi-caps" id="midiCaps" hidden></span>
+        <button class="midi-btn idle" id="midiBtn" type="button"><span class="midi-dot"></span><span id="midiBtnText">MIDI</span></button>
+        <select id="midiDevice" class="midi-dev" title="MIDI input device" hidden></select>
+        <!-- WHICH INSTRUMENT you hear — playback and your own live keys alike.
+             The keyboard has a real engine across its whole compass; the app
+             has two recorded octaves and shifts the middle one off their edges.
+             This governs live keys as well as playback because the alternative
+             is both at once: a digital piano already sounds the key under your
+             finger, and the app's sample layered over it is a second
+             instrument, detuned against the first. Hidden until a device with
+             an output port is actually connected — a choice with one possible
+             answer is not a choice. -->
+        <select id="midiSink" class="midi-dev" title="Which instrument you hear" hidden>
+          <option value="internal">App is the sound</option>
+          <option value="device">Keyboard is the sound</option>
+        </select>
+        <!-- Match the app's metronome to MIDI transport from the connected
+             keyboard, or leave the app's metronome independent. -->
+        <select id="midiSync" class="midi-dev" title="Metronome synchronisation" hidden>
+          <option value="follow">Sync with keyboard</option>
+          <option value="off">No sync</option>
+        </select>
+        <!-- Whether the beat is actually being shared over MIDI transport. -->
+        <span class="midi-sync-state" id="midiSyncState" hidden></span>
+      </div>
+      <div class="dock-body">
+        <div class="piano-wrap">
+          <div class="piano" id="piano">
+            <div class="piano-keys" id="pianoKeys"></div>
+          </div>
+        </div>
+        <div class="kbmap">
+          <div class="kbmap-head">
+            <h4>Keyboard Map</h4>
+            <button class="kb-edit" id="kbEditBtn" type="button" title="Edit key bindings">Edit keys…</button>
+          </div>
+          <div class="keyrow" id="kbRow"></div>
+          <div class="hint" id="kbHint"></div>
+        </div>
+        <div class="ctlbar">
+          <div class="actions">
+            <button id="undoBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 14L4 9l5-5" />
+                <path d="M4 9h11a6 6 0 0 1 0 12h-3" />
+              </svg>Undo</button>
+            <button id="clearBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" />
+              </svg>Clear</button>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </div>
+  <!-- Key bindings editor. Lists all 21 svara slots; the same click-then-press
+       capture the key map itself uses, so there is one rebinding rule. -->
+  <div class="lgd-scrim" id="keymapOverlay" hidden>
+    <div class="lgd kb-dlg" role="dialog" aria-modal="true" aria-label="Key bindings">
+      <div class="lgd-head">
+        <b>Key Bindings</b>
+        <button class="lgd-x" id="keymapClose" title="Close (Esc)" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+      </div>
+      <div class="lgd-body">
+        <ol class="kb-steps">
+          <li><b>Click</b> the svara you want to move.</li>
+          <li><b>Press</b> the key it should live on.</li>
+          <li><b>Esc</b> cancels · <b>Del</b> leaves it unassigned.</li>
+        </ol>
+        <div class="kb-status" id="keymapStatus"></div>
+        <div id="keymapBody"></div>
+        <div class="kb-foot">
+          <p class="kb-note">Rows are sthayis, columns are svaras. A key writes one svara,
+            so putting a key on a second svara takes it off the first.</p>
+          <button id="keymapReset" type="button">Reset to defaults</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Time signature editor. Two fields only: a name, and the division
+       written as its groups (3+2+2). Everything else about a metre follows
+       from the formula — see timesig.js. Same scrim/card as About and the key
+       bindings, so there is one modal idiom. -->
+  <div class="lgd-scrim" id="tsOverlay" hidden>
+    <div class="lgd ts-dlg" role="dialog" aria-modal="true" aria-label="Time signature">
+      <div class="lgd-head">
+        <b id="tsDlgTitle">New Time Signature</b>
+        <button class="lgd-x" id="tsClose" title="Close (Esc)" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+      </div>
+      <div class="lgd-body">
+        <label class="ts-f"><span>Name</span>
+          <input id="tsName" type="text" maxlength="24" placeholder="MISRA CHAPU" autocomplete="off">
+        </label>
+        <label class="ts-f"><span>Division</span>
+          <div class="ts-fr">
+            <input id="tsFormula" type="text" maxlength="40" placeholder="3+2+2" autocomplete="off">
+            <select id="tsUnit" title="Count the groups in this symbol">
+              <option value="bindu">bindu</option>
+              <option value="vasu">vasu</option>
+              <option value="praya">praya</option>
+              <option value="danta">danta</option>
+            </select>
+          </div>
+        </label>
+        <div class="ts-preview" id="tsPreview"></div>
+        <p class="ts-note">Write the division as its groups counted in the chosen symbol:
+          <b>3+2+2</b> is seven of them, grouped three-two-two. Every group edge draws a
+          lighter divider inside the division and takes a metronome accent. A bindu is
+          always one beat — counting in a smaller symbol just types the same box in a
+          different note value, and a time signature is always printed over 4.</p>
+        <div class="ts-foot">
+          <button id="tsDelete" type="button" class="ts-del" hidden>Delete</button>
+          <span class="ts-sp"></span>
+          <button id="tsCancel" type="button">Cancel</button>
+          <button id="tsSave" type="button" class="ts-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- The notation legend. Content is built once, on first open, by
+       legend.js — every glyph in it is drawn by the same code that draws the
+       staff, so it cannot drift from the notation. -->
+  <!-- About. Reuses the legend's scrim and card so there is one modal idiom;
+       everything it says about the product comes from config.js. -->
+  <div class="lgd-scrim" id="authOverlay" hidden>
+    <div class="lgd auth" role="dialog" aria-modal="true" aria-label="Account">
+      <div class="lgd-head">
+        <b id="authTitle">Sign in</b>
+        <button class="lgd-x" id="authClose" title="Close (Esc)" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+      </div>
+      <div class="auth-body" id="authBody"></div>
+    </div>
+  </div>
+
+  <div class="lgd-scrim" id="aboutOverlay" hidden>
+    <div class="lgd abt" role="dialog" aria-modal="true" aria-label="About IYDANI SCORER">
+      <div class="lgd-head">
+        <b>About</b>
+        <button class="lgd-x" id="aboutClose" title="Close (Esc)" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+      </div>
+      <div class="abt-body" id="aboutBody"></div>
+    </div>
+  </div>
+
+  <!-- Everything the connected keyboard sends. Web MIDI reports no
+       capabilities, so the only way to settle what an instrument transmits is
+       to read the bytes — and the report is copyable whole, because the person
+       who needs to read it is often not the person at the machine. Reuses the
+       legend's card rather than growing a third modal idiom. -->
+  <div class="lgd-scrim" id="midiMonOverlay" hidden>
+    <div class="lgd" role="dialog" aria-modal="true" aria-label="MIDI input monitor">
+      <div class="lgd-head">
+        <b>MIDI Monitor — everything the keyboard sends</b>
+        <span class="mon-acts">
+          <button class="mon-btn" id="midiMonCopy" type="button" title="Copy the whole report">Copy</button>
+          <button class="mon-btn" id="midiMonClear" type="button" title="Start the count again">Clear</button>
+        </span>
+        <button class="lgd-x" id="midiMonClose" title="Close (Esc)" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+      </div>
+      <div class="lgd-body"><pre class="mon-log" id="midiMonBody"></pre></div>
+    </div>
+  </div>
+
+  <div class="lgd-scrim" id="legendOverlay" hidden>
+    <div class="lgd" role="dialog" aria-modal="true" aria-label="Notation legend">
+      <div class="lgd-head">
+        <b>Notation Legend</b>
+        <button class="lgd-x" id="legendClose" title="Close (Esc)" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+      </div>
+      <div class="lgd-body" id="legendBody"></div>
+    </div>
+  </div>
+
+  <div id="pop"></div>
+  <input type="file" id="fileInput" accept=".json,.dng.json,.mid,.midi,.xml,.musicxml,.mxl" style="display: none;">
+  <script src="./vendor/jspdf.umd.min.js"></script>
+  <script src="./vendor/svg2pdf.umd.min.js"></script>
+  <script src="./vendor/lamejs.iife.js"></script>
+  <script src="./vendor/webmidi.iife.min.js"></script>
+  <script type="module" src="./main.js"></script>
+</body>
+
+</html>
