@@ -1,6 +1,8 @@
 // Mutable application state. Imported as a singleton by every module
 // that needs to read or mutate the current score / UI flags.
 
+import { scaleTones } from './config.js';
+
 export const state = {
   // input mode
   mode: 'piano',   // 'piano' | 'keyboard' | 'midi'
@@ -104,6 +106,9 @@ export const state = {
   // Layout only — the music is untouched, so these live beside the score
   // rather than in it.
   breaks: [],
+  // Which tones the score uses, [oct + 1][semi] — the sheet's tone legend.
+  // Per document: it rides in the tab's slice and the saved .json.
+  tones: scaleTones(),
 
   // The break most recently placed or moved, as its box ordinal, or null.
   // A POINTER, not score data: it says where the user was last working, so the
@@ -165,14 +170,19 @@ export const state = {
 
   // metadata
   title: 'Untitled',
+  // The name this document was last saved or opened under, extension off. It
+  // is what the tab shows once there is one; the title stays the printed one.
+  file: '',
   preset: null,
 
   // history
   hist: [],
   future: [],
 
-  // cowork (mock for now)
+  // cowork
   cwRole: 'teacher',
+  // The lesson being played, or null — see lesson.js.
+  lesson: null,
 };
 
 // Open documents shown as tabs. Each entry stores a slice of the state.
@@ -180,6 +190,13 @@ export const docs = [];
 export let activeDoc = 0;
 export function setActiveDoc(i) { activeDoc = i; }
 export function getActiveDoc() { return activeDoc; }
+
+// Is this tone switched on in the legend? Sá (semi 12) is Sa of the sthayi
+// above, and anything outside the three sthayis has no switch and is on.
+export function toneOn(semi, oct) {
+  const row = state.tones[oct + Math.floor(semi / 12) + 1];
+  return !row || row[((semi % 12) + 12) % 12] !== false;
+}
 
 export function snapshot() {
   return JSON.stringify({

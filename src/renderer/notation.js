@@ -51,7 +51,7 @@ import {
   REPEAT_DOT_R, REPEAT_DOT_DX, REPEAT_DOT_GAP2, REPEAT_DOT_GAP,
   REPEAT_W, REPEAT_PAIR_SPAN,
   DOT_MULT, DOTTABLE, DOT_R, DOT_GAP, DOT_ROOM,
-  MA_INDEX, M2_TRI_W, M2_TRI_H, SVARA_LETTER,
+  MA_INDEX, M2_TRI_W, M2_TRI_H, TONE_LETTER, semiOf,
   NOTE_SCALE, NOTE_GEOM, GOLI_R, STEM_LEN, NOTE_INK_W, BAR_W, BAR_H,
   VW, LPAD, RPAD, BX0, USABLE_W, TOPY, GTOP, MAGY, BOTY, STEP,
   SVARA_RUNG, RUNGS_PER_OCTAVE,
@@ -62,9 +62,10 @@ import {
   JOIN_GAP, JOIN_BOW, JOIN_BOW_MIN, JOIN_BOW_MAX, JOIN_INK_W,
   GUTTER_NUM_X, GUTTER_MARK_X, GUTTER_NUM_BOX, GUTTER_TRI_W,
   GUTTER_OUT, GUTTER_MID_OFFSET,
+  toMM, PAGE_H_MM, PAGE_FIRST_Y, PAGE_NEXT_Y, PAGE_BOT_LIMIT, PAGE_GAP_MM, ROW_GAP_MM,
 } from './config.js';
 import {
-  boxUnits as metreUnits, beatsPerBox, boxesPerRow, groupEdges,
+  boxUnits as metreUnits, beatsPerBox, boxesPerRow, groupEdges, groupsOf,
 } from './timesig.js';
 import {
   ensureBarIds, ensureBarUnits, repeatPairs, resolveMark,
@@ -407,21 +408,37 @@ export function scoreRows(notes = state.notes, bars = state.bars,
         off += units;
       }
     }
-    // A box that turns out to hold nothing but silence is written as the one
-    // rest that says so — a Maguru rest — instead of four bindu rests in a
-    // row. `covers` keeps the source notes it swallowed, so repeat marks and
-    // the playing highlight still find them at this glyph.
+    // A box that turns out to hold nothing but silence is written as the
+    // fewest rests that say so, GROUP BY GROUP of the metre, instead of a bindu
+    // rest a beat: one Maguru rest under a plain four, a guru rest under a
+    // two, a Maguru rest then a bindu rest under 4+1, two Maguru rests under
+    // ADI's 4+4. The rests always add up to the division — it was one Maguru
+    // rest whatever the metre, four beats drawn in a division of two, or of
+    // five. A group no single rest measures takes the largest first (three
+    // beats is a guru rest and a bindu rest). `covers` keeps the source notes
+    // each rest swallowed, so the section panel knows it stands for several.
     const total = box.entries.reduce((u, e) => u + e.units, 0);
     if (box.entries.length > 1 && total === cap
         && box.entries.every(e => e.note.type === 'rest')) {
-      const covers = box.entries.map(e => e.index).filter(i => i != null);
-      box.entries = [{
-        note: { type: 'rest', sym: REST_OF.Maguru, dur: SOUND.Maguru.dur },
-        index: covers.length ? covers[0] : null,
-        covers,
-        at: boxStart,
-        units: cap,
-      }];
+      const old = box.entries;
+      box.entries = [];
+      let at = boxStart;
+      for (const beats of groupsOf()) {
+        for (const sym of alignedSteps(beats * TIME_UNITS_PER_BEAT, 0, SOUND_UNITS)) {
+          const units = Math.round(SOUND[sym].dur * TIME_UNITS_PER_BEAT);
+          const covers = [...new Set(old
+            .filter(e => e.index != null && e.at >= at && e.at < at + units)
+            .map(e => e.index))];
+          box.entries.push({
+            note: { type: 'rest', sym: REST_OF[sym], dur: SOUND[sym].dur },
+            index: covers.length ? covers[0] : null,
+            covers,
+            at,
+            units,
+          });
+          at += units;
+        }
+      }
     }
     // Where this division sits on the clock, and which source note opens it.
     // `at` is what the interior group dividers measure their offsets from;
@@ -873,13 +890,13 @@ export function noteGlyph(x, y, sound, filled, dir = 1, dot = false, tip = null,
   return out;
 }
 
-// The svara's name written beside its goli, for the Legend toggle. One letter
-// per LADDER POSITION — SVARA_LETTER — exactly as Files/OCTAVES NOTES
-// PLACMENT.svg labels the three-octave chart: a chromatic octave reads
-// S R R G G M M P D D N N, the pair sharing a letter because the notehead
-// beside it already separates them (hollow natural, filled lowered, triangle
-// M2). Naming the semitone instead (TONE_LETTER's r/R, m/M) would print the
-// same distinction twice and make the letter, not the head, carry the notation.
+// The svara's name written beside its goli, for the Legend toggle. It is the
+// letter on the PIANO KEY that writes the note — TONE_LETTER, through semiOf()
+// — so a chromatic octave reads S r R g G m M P d D n N on the staff, on the
+// key caps and in the sheet's tone legend alike. It was one letter per ladder
+// position (S R R G G M M ...), as Files/OCTAVES NOTES PLACMENT.svg labels its
+// chart, and was changed at the notation author's word: a name that does not
+// match the key that was pressed is not one a player can check.
 //
 // It goes on the side of the goli the stem does NOT leave from, so it can never
 // collide with the stem or with the ornament riding its tip. Attributes are
@@ -898,7 +915,7 @@ function svaraNameSpan(y, dir) {
 }
 
 function svaraName(x, y, n, dir) {
-  const letter = SVARA_LETTER[n.svaraIndex];
+  const letter = TONE_LETTER[semiOf(n.svaraIndex, n.head) % 12];
   if (!letter) return '';
   const r = GOLI_R * NOTE_SCALE;
   // dir is +1 when the stem rises, so the name hangs below the goli; -1 when it
@@ -1334,7 +1351,11 @@ function rowSVG(row, hl, at, interactive = true) {
     // marking both would light a glyph that is not being heard yet.
     const active = nowEntry ? e === nowEntry
       : (hl != null && e.index != null && hl === e.index);
-    const ink = active ? STAFF.playInk : STAFF.noteInk;
+    // A lesson's hit/miss marks, on screen only — an export is never marked.
+    const mark = interactive && state.lesson && e.index != null
+      ? state.lesson.marks[e.index] : null;
+    const ink = active ? STAFF.playInk
+      : mark ? `var(--lesson-${mark})` : STAFF.noteInk;
 
     if (n.type === 'rest') {
       // Rests are drawn markup now, so the playback lift rides the same
@@ -1478,6 +1499,36 @@ function rowGutter(n, yMin) {
     + `<i class="sth dn" style="top:${at(BOTY + GUTTER_OUT)};left:${markL};width:${markW}"></i>`;
 }
 
+// Where every row sits on the A4 page: which page, how far down it, and how
+// tall. The PDF export and the screen's Page view both place rows by this, so
+// the page on screen breaks where the exported one does. Height is per-row:
+// mandra/taara stems make a row taller than the madhya baseline, and the break
+// has to account for the row it is about to place rather than a fixed step.
+export function pageLayout(rows) {
+  let y = PAGE_FIRST_Y, page = 0;
+  return rows.map(row => {
+    const h = toMM(rowExtent(row).height);
+    if (y + h > PAGE_BOT_LIMIT) { page++; y = PAGE_NEXT_Y; }
+    const at = { page, y, h };
+    y += h + ROW_GAP_MM;
+    return at;
+  });
+}
+
+// Page view's seam between two pages, written after the last row of one: the
+// rest of that page with its own pill and brand line, a strip of stage, then
+// the next page's top padding. Its height is what makes every page on screen
+// exactly A4 tall. Screen only — the print rules hide it.
+function pageEnd(last) {
+  const mm = n => `${n.toFixed(3)}mm`;
+  const foot = PAGE_H_MM - (last.y + last.h);
+  return `<div class="pgend" style="height:${mm(foot + PAGE_GAP_MM + PAGE_NEXT_Y)}">`
+    + `<div class="pgfoot" style="height:${mm(foot)}">`
+    + `<div class="pagenum"><span>${last.page + 1}</span></div>`
+    + `<div class="brand">© Lyptron</div></div>`
+    + `<div class="pggap" style="height:${mm(PAGE_GAP_MM)}"></div></div>`;
+}
+
 export function render() {
   const score = document.getElementById('score');
   // The last-break pointer is validated here because this is the one funnel
@@ -1489,6 +1540,18 @@ export function render() {
   }
   const rows = scoreRows();
   let ghosted = state.lastBreak == null;
+  // Page view lays the rows out as A4 pages; off, the sheet is one continuous
+  // strip with no page number, because it is not a page.
+  const at = state.pageView ? pageLayout(rows) : null;
+  const pages = at && at.length ? at[at.length - 1].page + 1 : 1;
+  const sheet = score.closest ? score.closest('.sheet') : null;
+  if (sheet && sheet.style) {
+    sheet.classList.toggle('flow', !at);
+    sheet.style.minHeight = at
+      ? `${(pages * PAGE_H_MM + (pages - 1) * PAGE_GAP_MM).toFixed(3)}mm` : '';
+    const pill = sheet.querySelector(':scope > .pagenum span');
+    if (pill) pill.textContent = pages;
+  }
   score.innerHTML = rows.map((row, i) => {
     const yMin = rowExtent(row).yMin;
     // The badge belongs to the row the break falls AFTER, so it reads as the
@@ -1497,7 +1560,8 @@ export function render() {
     if (next && next.brk && next.brkOrd === state.lastBreak) ghosted = true;
     const mark = next && next.brk
       ? breakMark(next.brkOrd, yMin, next.brkOrd === state.lastBreak) : '';
-    return `<div class="srow" data-row="${i}">${rowGutter(i + 1, yMin)}${mark}`
+    const seam = at && i && at[i].page !== at[i - 1].page ? pageEnd(at[i - 1]) : '';
+    return `${seam}<div class="srow" data-row="${i}">${rowGutter(i + 1, yMin)}${mark}`
       + `${repeatBadges(row, yMin)}`
       + `${rowSVG(row, state.hlIndex, state.hlAt)}</div>`;
   }).join('');

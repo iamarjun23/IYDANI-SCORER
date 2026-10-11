@@ -2,6 +2,7 @@ import { state } from './state.js';
 import { buildPlaySeq } from './playback.js';
 import { renderSequenceOffline } from './audio.js';
 import { encodeAudioBufferToMp3 } from './mp3-encoder.js';
+import { renderClicks } from './metronome.js';
 
 let exporting = false;
 
@@ -36,7 +37,9 @@ export async function exportMP3() {
 
   try {
     const sequence = buildPlaySeq();
-    const audioBuffer = await renderSequenceOffline(sequence, state.bpm);
+    // Always with the metronome, in the chosen sound, whether or not it is
+    // switched on in the editor.
+    const audioBuffer = await renderSequenceOffline(sequence, state.bpm, renderClicks);
     const Encoder = window.lamejs?.Mp3Encoder;
     const bytes = await encodeAudioBufferToMp3(audioBuffer, Encoder, {
       kbps: 128,

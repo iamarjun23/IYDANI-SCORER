@@ -93,11 +93,14 @@ export function installKeyboard() {
         head,
         oct: m.oct,
       });
-      beginMetronomeEntry();
+      // null: the tone is switched off in the legend — sounded, nothing written.
+      const written = noteIndex != null;
+      if (written) beginMetronomeEntry();
       heldVoices.set(e.code, {
         voice: startSustain(freqOf(semiOf(m.idx, head), m.oct)),
-        stopPromotion: startHoldPromotion(noteIndex, selectedSym),
+        stopPromotion: written ? startHoldPromotion(noteIndex, selectedSym) : () => {},
         noteIndex,
+        written,
       });
       flash(document.querySelector(`.kcap[data-key="${k}"]`));
       flash(document.querySelector(`.wkey[data-svi="${m.idx}"][data-ko="0"]`));
@@ -125,14 +128,14 @@ export function installKeyboard() {
     if (!held) return;
     heldVoices.delete(e.code);
     held.stopPromotion();
-    endMetronomeEntry();
+    if (held.written) endMetronomeEntry();
     stopSustain(held.voice);
   });
 
   window.addEventListener('blur', () => {
     heldVoices.forEach(held => {
       held.stopPromotion();
-      endMetronomeEntry();
+      if (held.written) endMetronomeEntry();
       stopSustain(held.voice);
     });
     heldVoices.clear();

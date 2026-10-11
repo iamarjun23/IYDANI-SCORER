@@ -185,6 +185,25 @@ eq(empty[0].boxes.length, 2, 'a fresh ADI score opens on two divisions to type i
 state.tala = 'chatusra';
 eq(scoreRows([], [], [])[0].boxes.length, 4, 'and CHATUSRA is untouched — still four');
 
+// ---- a silent division is written as rests WORTH the division, by group -----
+// It was always one Maguru rest — four beats — whatever the division held.
+const silentRest = (formula) => {
+  state.tala = registerTala({ key: 'u-silent-' + formula, label: 'Silent', formula });
+  const bindus = Array.from({ length: beatsPerBox() }, () => ({ type: 'rest', sym: 'rest_symbol_1', dur: 1 }));
+  const entries = scoreRows(bindus, [], [])[0].boxes[0].entries;
+  eq(entries.reduce((u, e) => u + Math.round(e.note.dur * TIME_UNITS_PER_BEAT), 0), boxUnits(),
+    `${formula}: the rests drawn add up to the division`);
+  return entries.map(e => e.note.sym);
+};
+const [BINDU_R, GURU_R, MAGURU_R] = ['rest_symbol_1', 'rest_5', 'rest_6'];
+eq(silentRest('2'), [GURU_R], 'two silent beats in a two-beat division are one guru rest');
+eq(silentRest('4'), [MAGURU_R], 'a four-beat division still takes the Maguru rest');
+eq(silentRest('4+1'), [MAGURU_R, BINDU_R], '4+1 is a Maguru rest, then a bindu rest');
+eq(silentRest('4+4'), [MAGURU_R, MAGURU_R], 'two groups of four are two Maguru rests');
+eq(silentRest('3+2+2'), [GURU_R, BINDU_R, GURU_R, GURU_R], 'each group is written on its own');
+eq(silentRest('3'), [GURU_R, BINDU_R], 'a group no single rest measures takes the largest first');
+state.tala = 'chatusra';
+
 // ---- repeat marks ----------------------------------------------------------
 // A mark lives on the CLOCK, not on a note: it can be dropped anywhere, on
 // written music or on empty staff, and it stays where it was put.

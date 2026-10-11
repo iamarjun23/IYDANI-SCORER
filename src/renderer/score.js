@@ -1,7 +1,7 @@
 // Score mutations. Every public function here pushes a history snapshot
 // first, then mutates state, then re-renders.
 
-import { state } from './state.js';
+import { state, toneOn } from './state.js';
 import {
   BPM, DOT_MULT, ENTRY_BEAT_MS, HOLD_CAP_BEATS, HOLD_TICK_UNITS, SOUND, REST_MAP,
   SVARAS, beatSeconds,
@@ -12,6 +12,7 @@ import { pushHist, updateUndoButtons } from './history.js';
 import { pluck, freqOf } from './audio.js';
 import { render, padRests, glyphFor } from './notation.js';
 import { newBarId, repeatPairs } from './repeat-model.js';
+import { lessonKey } from './lesson.js';
 
 // Metronome entry state. It stays dormant until the first note is entered
 // while the standalone metronome is running.
@@ -89,6 +90,18 @@ function appendRest(sym) {
 export function addNote(svi, {
   playSound = true, sym = state.sym, head = state.head, oct = state.oct, vel = null,
 } = {}) {
+  // A lesson is open: the key is sounded and judged, never written.
+  if (state.lesson) {
+    if (playSound) pluck(freqOf(semiOf(svi, head), oct));
+    lessonKey(svi, head, oct);
+    return null;
+  }
+  // A tone switched off in the sheet's legend is heard and not written. Null
+  // tells the caller there is no note to grow and no key to count as held.
+  if (!toneOn(semiOf(svi, head), oct)) {
+    if (playSound) pluck(freqOf(semiOf(svi, head), oct));
+    return null;
+  }
   pushHist();
   state.preset = null;
   const symKey = SOUND[sym] ? sym : 'bindu';
@@ -321,6 +334,21 @@ export function moveNote(index, { svaraIndex = null, oct = null, delta = 0 } = {
   return true;
 }
 
+// Delete from the roll. A NOTE becomes the silence it was taking up, so nothing
+// after it moves; a REST is taken out and the music closes over it — which is
+// the only thing deleting silence can mean in a sequence.
+export function removeNote(index) {
+  const note = state.notes[index];
+  if (!note) return false;
+  pushHist();
+  const rests = note.type === 'rest' ? []
+    : padRests(unitsOfNote(note), unitsBefore(index) % TIME_UNITS_PER_BEAT);
+  state.notes.splice(index, 1, ...rests);
+  state.preset = null;
+  render();
+  return true;
+}
+
 // Register a held note for beat-driven growth. A returned cleanup function
 // finalizes the note on key release.
 //
@@ -533,6 +561,7 @@ export function tickScoreClock(dtMs) {
 }
 
 export function addRest(sym) {
+  if (state.lesson) return;
   pushHist();
   state.preset = null;
   appendRest(sym);
@@ -596,14 +625,22 @@ function idleAccruing() {
 // padRests() can pick the same beat-aligned values the 'auto' fill derives.
 // The fractional remainder is KEPT, so silence written always adds up to the
 // time that actually elapsed instead of rounding away a danta at a time.
-function flushIdle() {
+//
+// A click writes only silence that FINISHES a beat of the written music; what
+// is left over waits for the next click. Only a note about to be written
+// (`all`) takes the part-beat in front of it. A key is released anywhere
+// between two clicks, so the written music and the clicks are out of phase by
+// that much, and a click that wrote everything it had cut every beat of
+// silence in two at the click: release half a beat after one and the staff
+// filled with pairs of vasu rests instead of one bindu rest a beat.
+function flushIdle(all = false) {
   let wrote = false;
   while (metroEntry.idleUnits + 1e-9 >= 1) {
     const used = usedInBeat();
-    const take = Math.min(
-      TIME_UNITS_PER_BEAT - used,
-      Math.floor(metroEntry.idleUnits + 1e-9),
-    );
+    const room = TIME_UNITS_PER_BEAT - used;
+    const have = Math.floor(metroEntry.idleUnits + 1e-9);
+    if (!all && have < room) break;
+    const take = Math.min(room, have);
     if (take < 1) break;
     if (!wrote) pushHist();
     for (const rest of padRests(take, used)) state.notes.push(rest);
@@ -623,10 +660,10 @@ function flushIdle() {
 // measured to an eighth of a beat while the space between them was measured to
 // a whole one.
 export function closeMetronomeSilence() {
-  if (state.fill !== 'metro') return;
+  if (state.fill !== 'metro' || state.lesson) return;
   if (!state.metroOn || !metroEntry.armed || keyIsHeld()) return;
   accrueIdle();
-  if (flushIdle()) {
+  if (flushIdle(true)) {
     state.preset = null;
     render();
   }
@@ -650,7 +687,7 @@ export function onMetronomeTick() {
   // The danta clock stands down from whole beats while this is running, so the
   // two cannot both count the same beat.
   advanceHeldByBeat();
-  if (state.fill !== 'metro') return;
+  if (state.fill !== 'metro' || state.lesson) return;
   if (!state.metroOn || !metroEntry.armed || keyIsHeld()) return;
   // The tick no longer COUNTS the silence — it only asks the clock how much has
   // gone by, the same question closeMetronomeSilence() asks. Counting ticks made
@@ -747,6 +784,7 @@ export function clearAll() {
 }
 
 export function deleteLast() {
+  if (state.lesson) return;
   pushHist();
   state.notes.pop();
   render();
@@ -784,6 +822,7 @@ export function loadPreset(name) {
 
   state.preset = name;
   state.title  = TITLES[name];
+  state.file   = '';
   document.getElementById('titleVal').textContent = TITLES[name];
   state.hist   = [];
   state.future = [];

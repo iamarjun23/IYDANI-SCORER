@@ -1,7 +1,7 @@
 {
   "name": "iydani-scorer",
   "productName": "IYDANI",
-  "version": "0.20.0",
+  "version": "0.21.1",
   "description": "IYDANI SCORER — Write - N - Read - N - Play. Desktop DNG notation editor.",
   "main": "src/main.js",
   "author": {
@@ -19,7 +19,8 @@
     "dist": "electron-builder --win --x64 --publish never",
     "dist:mac": "electron-builder --mac --publish never",
     "check": "node tools/check-imports.mjs",
-    "test": "npm run test:layout && npm run test:notation && npm run test:pdf && npm run test:mp3 && npm run test:midi && npm run test:midi-import && npm run test:midi-input && npm run test:midi-webmidi && npm run test:midi-clock && npm run test:midi-follow && npm run test:midi-monitor && npm run test:midi-highlight && npm run test:midi-memory && npm run test:metro-entry && npm run test:metronome && npm run test:pitch && npm run test:audio && npm run test:keybinds && npm run test:midi-device && npm run test:timesig && npm run test:hold-value && npm run test:metro-resolution && npm run test:breaks && npm run test:follow && npm run test:section",
+    "test": "npm run test:layout && npm run test:notation && npm run test:pdf && npm run test:mp3 && npm run test:midi && npm run test:midi-import && npm run test:midi-input && npm run test:midi-webmidi && npm run test:midi-clock && npm run test:midi-follow && npm run test:midi-monitor && npm run test:midi-highlight && npm run test:midi-memory && npm run test:metro-entry && npm run test:metronome && npm run test:pitch && npm run test:audio && npm run test:keybinds && npm run test:midi-device && npm run test:timesig && npm run test:hold-value && npm run test:metro-resolution && npm run test:breaks && npm run test:follow && npm run test:section && npm run test:autosave && npm run test:tones && npm run test:i18n && npm run test:lesson",
+    "test:lesson": "node tests/lesson.test.mjs",
     "test:layout": "node tests/layout.test.mjs",
     "test:notation": "node tests/notation.test.mjs",
     "test:pdf": "node tests/pdf.test.mjs",
@@ -45,7 +46,13 @@
     "test:follow": "node tests/follow.test.mjs",
     "test:breaks": "node tests/breaks.test.mjs",
     "test:section": "node tests/section.test.mjs",
-    "verify": "npm run check && npm test"
+    "test:autosave": "node tests/autosave.test.mjs",
+    "test:tones": "node tests/tones.test.mjs",
+    "test:i18n": "node tests/i18n.test.mjs",
+    "verify": "npm run check && node tools/version.mjs --check && npm test",
+    "preversion": "node tools/version.mjs --pre",
+    "version": "node tools/version.mjs",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
     "electron": "^33.0.0",

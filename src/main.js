@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, net, protocol, session, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, net, protocol, screen, session, shell } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { setupAutoUpdater } = require('./updater');
@@ -51,16 +51,23 @@ if (isDev) {
 
 
 function createWindow() {
+  // What the screen can actually show. 1600x1000 is larger than the whole
+  // desktop on most laptops — a 1920x1080 panel at the 125% or 150% scaling
+  // Windows picks for it is 1536x864 or 1280x720 — and a window opened past
+  // the edge of the screen has its right-hand controls and its piano off it.
+  const area = screen.getPrimaryDisplay().workAreaSize;
   const win = mainWindow = new BrowserWindow({
     // The sheet is a 21 cm page — 794 CSS px at 96 dpi — and the chrome around
     // it is a 176 px tool rail plus the 460 px section rail. 1440 left the
     // staff being squeezed below true size the moment the roll widened the
     // right-hand side, so the default window is sized to hold the page at 100%
     // zoom with both rails open rather than to a round number.
-    width: 1600,
-    height: 1000,
-    minWidth: 1120,
-    minHeight: 700,
+    width: Math.min(1600, area.width),
+    height: Math.min(1000, area.height),
+    // Small enough to fit a 1280x720 desktop with room to move. The layout
+    // gives way in steps under 1720px — see "smaller windows" in index.html.
+    minWidth: 1024,
+    minHeight: 640,
     backgroundColor: '#191919',
     title: 'IYDANI SCORER',
     // build/icon.png is what electron-builder stamps onto the EXE, but it is
@@ -77,6 +84,9 @@ function createWindow() {
       webSecurity: true,
     },
   });
+
+  // A screen with no room to spare gets all of it.
+  if (area.width < 1600 || area.height < 1000) win.maximize();
 
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
@@ -96,8 +106,18 @@ function createWindow() {
     }
   });
 
+  // DevTools is opened by hand in dev, not at launch. The application menu is
+  // null, so the accelerator Electron's default menu would supply is gone too
+  // and has to be bound here.
   if (isDev) {
-    win.webContents.openDevTools({ mode: 'detach' });
+    win.webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return;
+      const key = input.key.toLowerCase();
+      if (key === 'f12' || (key === 'i' && input.shift && (input.control || input.meta))) {
+        event.preventDefault();
+        win.webContents.toggleDevTools();
+      }
+    });
   }
 
   win.on('closed', () => { if (mainWindow === win) mainWindow = null; });
@@ -217,6 +237,17 @@ if (!app.requestSingleInstanceLock()) {
       apiUrl: awsConfig.apiUrl || '',
       scoresBucketHost: awsConfig.scoresBucketHost || '',
     }));
+
+    // Electron already shows the Save dialog for an <a download>; this only
+    // reports back the NAME chosen there, so the tab can show it. The basename
+    // and nothing else — the renderer has no use for where on disk it went.
+    session.defaultSession.on('will-download', (_event, item, contents) => {
+      item.once('done', (_e, result) => {
+        if (result === 'completed' && !contents.isDestroyed()) {
+          contents.send('file:saved', path.basename(item.getSavePath()));
+        }
+      });
+    });
 
     Menu.setApplicationMenu(null);
     createWindow();

@@ -52,7 +52,7 @@ import {
   newTapTempo, tapTempo, tapStale, TAP_TIMEOUT_MS,
 } from './midi-clock.js';
 import {
-  highlightSemi, highlightDeviceKey, buildPiano, writtenFor, deviceFreq, deviceRange,
+  highlightSemi, highlightDeviceKey, buildPiano, writtenFor, deviceFreq, deviceRange, setOct,
 } from './piano.js';
 import {
   newRangeTracker, resetRangeTracker, noteSeen, noteName, newVelocityProbe,
@@ -1029,10 +1029,13 @@ export function noteOn(midi, velocity = 64) {
   const index = addNote(w.svaraIndex, {
     playSound: false, sym, head: w.head, oct: w.oct, vel: noteVelocity(velocity),
   });
-  beginMetronomeEntry();
+  // null: the tone is switched off in the sheet's legend. The key still sounds
+  // and lights; there is just no note to grow and no entry to count as held.
+  const on = index != null;
+  if (on) beginMetronomeEntry();
   const voice = keySoundsHere() ? startSustain(freqOf(w.semi, w.oct), gain) : null;
-  const stopPromotion = startHoldPromotion(index, sym);
-  held.set(midi, { voice, stopPromotion, semi: w.semi, oct: w.oct, written: true });
+  const stopPromotion = on ? startHoldPromotion(index, sym) : () => {};
+  held.set(midi, { voice, stopPromotion, semi: w.semi, oct: w.oct, written: on });
   publishHeld();
 
   // Two keyboards can be on screen, so both are told. highlightSemi() lights
@@ -1041,11 +1044,15 @@ export function noteOn(midi, velocity = 64) {
   // (addressed by midi number) in MIDI mode. Each matches nothing in the other
   // mode, so calling both is how one physical press lights whichever keyboard
   // the player is actually looking at.
-  highlightSemi(w.semi, true, w.oct);
-  scrollToLatest();
+  // The sthayi selector and the sheet's tone legend follow the hand, as they
+  // follow the letter rows in keyboard.js — a switched-off tone included, so
+  // the legend on screen is the row that refused it. Before the highlight:
+  // setOct() rebuilds the piano.
+  if (state.oct !== w.oct) setOct(w.oct);
+  if (on) { highlightSemi(w.semi, true, w.oct); scrollToLatest(); }
   if (grew && state.mode === 'midi') buildPiano();
   highlightDeviceKey(midi, true);
-  emitStatus({ midi, velocity, ...w });
+  emitStatus({ midi, velocity, ...w, toneOff: !on });
 }
 
 // ---------- the damper pedal ----------
@@ -1215,6 +1222,7 @@ function statusTextFor(s) {
   const n = s.lastNote;
   if (n.unwritable) return `${name} — key outside the staff's range: heard, not written`;
   const letter = TONE_LETTER[n.semi];
+  if (n.toneOff) return `${name} — ${letter} is switched off in the tone legend: heard, not written`;
   return `${name} — ${letter} ${SECTION[n.oct]}`;
 }
 

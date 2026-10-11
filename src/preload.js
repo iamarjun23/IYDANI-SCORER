@@ -8,7 +8,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('hamsleka', {
   platform: process.platform,
   versions: {
-    app: '0.20.0',
+    app: '0.21.1',
     electron: process.versions.electron,
     chrome: process.versions.chrome,
     node: process.versions.node,
@@ -40,6 +40,14 @@ contextBridge.exposeInMainWorld('hamsleka', {
       ipcRenderer.on('deeplink', subscription);
       return () => ipcRenderer.removeListener('deeplink', subscription);
     },
+  },
+
+  // The name a file was saved under, as chosen in the Save dialog — the
+  // basename only. Fires for every download, exports included.
+  onFileSaved: (callback) => {
+    const subscription = (_event, name) => callback(name);
+    ipcRenderer.on('file:saved', subscription);
+    return () => ipcRenderer.removeListener('file:saved', subscription);
   },
 
   updater: {

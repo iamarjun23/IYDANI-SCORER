@@ -41,6 +41,9 @@
          and saturated rather than pale, because it replaces black on a thin
          0.42mm stroke and a light tint would read as the note fading out. */
       --play-ink: #1146c8;
+      /* A lesson's marks, on the same white page for the same reason. */
+      --lesson-hit: #1c8a3a;
+      --lesson-miss: #c8321f;
       /* The section roll. It is a second view of the score, so it is themed
          like the app around it rather than being a fixed dark DAW panel — a
          black rectangle in a white rail is not a design, it is a screenshot of
@@ -109,7 +112,8 @@
     }
 
     body {
-      font-family: "Hanken Grotesk", -apple-system, system-ui, sans-serif;
+      font-family: "Hanken Grotesk", "Noto Sans Kannada", "Noto Sans Devanagari", "Noto Sans Telugu",
+        "Noto Sans Tamil", -apple-system, system-ui, sans-serif;
       background: var(--bg);
       color: var(--ink);
       -webkit-font-smoothing: antialiased;
@@ -280,12 +284,18 @@
     }
 
 
+    /* Wraps rather than clips: a control pushed past the right edge of a
+       narrow window was unreachable, not merely hidden. The rules under
+       "smaller windows" shed labels first, so a second row is the last
+       resort and not the first. */
     .toolbar {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       gap: 6px;
-      height: 56px;
-      padding: 0 12px;
+      row-gap: 0;
+      min-height: 56px;
+      padding: 2px 12px 1px;
       background: var(--chrome);
       border-bottom: 1px solid var(--border)
     }
@@ -314,14 +324,14 @@
     /* The metronome is the one control you reach for mid-practice, so it is
        deliberately the largest button in the transport. */
     .ico.big {
-      width: 52px;
-      height: 52px;
-      border-radius: 12px
+      width: 44px;
+      height: 44px;
+      border-radius: 11px
     }
 
     .ico.big svg {
-      width: 32px;
-      height: 32px
+      width: 28px;
+      height: 28px
     }
 
     .ico:disabled {
@@ -472,112 +482,108 @@
       gap: 6px
     }
 
-    .toolbar2 {
+    /* A toolbar group: a caption over one row of controls. The caption is the
+       group's heading, so the bar reads File / Edit / View / Transport before
+       any icon has to be recognised. */
+    .tgroup {
       display: flex;
-      align-items: center;
-      gap: 8px;
-      height: 48px;
-      padding: 0 14px;
-      background: var(--chrome);
-      border-bottom: 1px solid var(--border)
+      flex-direction: column;
+      gap: 1px;
+      padding: 4px 0
     }
 
-    .t2lab {
-      font-size: 11px;
-      letter-spacing: .1em;
-      text-transform: uppercase;
-      color: var(--ink-3);
-      font-weight: 700
+    .tgroup+.tgroup {
+      border-left: 1px solid var(--border);
+      margin-left: 4px;
+      padding-left: 10px
     }
 
-    .rep-pair {
-      display: flex;
-      align-items: center;
-      border: 1px solid var(--btn-border);
-      border-radius: 8px;
-      overflow: hidden;
-      background: var(--btn)
-    }
-
-    .rep-pair .rb {
-      height: 34px;
-      padding: 0 9px;
-      border: none;
-      background: none;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      color: var(--glyph)
-    }
-
-    .rep-pair .rb:hover {
-      background: var(--hover)
-    }
-
-    .rep-pair .rb+.rb {
-      border-left: 1px solid var(--border)
-    }
-
-    .rep-pair .rb .cap {
+    .tcap {
       font-size: 10px;
       font-weight: 700;
-      color: var(--ink-2)
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--ink-3)
     }
 
-    .rep-pair .cnt {
-      font-size: 9.5px;
-      font-weight: 700;
-      color: var(--ink-3);
-      padding: 0 6px
-    }
-
-    #braceTools .rb {
-      height: 46px;
-      padding: 2px 10px;
-      border: 1px solid var(--btn-border);
-      background: var(--btn);
-      border-radius: 8px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      color: var(--glyph)
-    }
-
-    #braceTools .rb:hover {
-      background: var(--hover)
-    }
-
-    /* Armed: this button and the sidebar glyph beside it are one tool, so they
-       are lit the same way .glyph.sel is. */
-    #braceTools .rb.sel {
-      border-color: var(--accent);
-      background: color-mix(in srgb, var(--accent) 12%, transparent)
-    }
-
-    #braceTools .rb .cnt {
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--ink-2)
-    }
-
-    .brace {
-      height: 34px;
-      padding: 0 10px;
-      border: 1px solid var(--btn-border);
-      background: var(--btn);
-      border-radius: 8px;
-      cursor: pointer;
+    .trow {
       display: flex;
       align-items: center;
-      color: var(--ink-2);
-      font-size: 12px;
-      font-weight: 600
+      gap: 6px;
+      height: 44px
     }
 
-    .brace:hover {
+    /* Tracking is a Latin habit: between the clusters of an Indic script it
+       only pulls the word apart. */
+    :root:not(:lang(en)) .tcap,
+    :root:not(:lang(en)) .dock-head .label {
+      letter-spacing: 0
+    }
+
+    /* Indic letterforms are denser than Latin ones, and close up at the
+       10px these labels are set in. */
+    :root:not(:lang(en)) .tcap,
+    :root:not(:lang(en)) .glyph .nm {
+      font-size: 11.5px
+    }
+
+    /* The export menu is a native popover, hung off its button by anchor
+       positioning and dressed like #pop. */
+    #exportBtn {
+      anchor-name: --export
+    }
+
+    #exportMenu {
+      position-anchor: --export;
+      inset: auto;
+      top: anchor(bottom);
+      left: anchor(left);
+      margin: 5px 0 0;
+      min-width: 190px;
+      padding: 6px;
+      background: var(--pop);
+      color: var(--ink);
+      border: 1px solid var(--border-2);
+      border-radius: 10px;
+      box-shadow: 0 12px 34px rgba(0, 0, 0, .28)
+    }
+
+    .xit {
+      display: block;
+      width: 100%;
+      padding: 8px 10px;
+      border: none;
+      background: none;
+      border-radius: 7px;
+      font-size: 13px;
+      text-align: left;
+      cursor: pointer
+    }
+
+    .xit:hover {
       background: var(--hover)
+    }
+
+    .xit:disabled {
+      opacity: .5;
+      cursor: default
+    }
+
+    /* A text action at the foot of a Tools section (Clear marks). */
+    .tlink {
+      display: block;
+      margin: -6px 8px 10px;
+      padding: 4px;
+      border: none;
+      background: none;
+      font-size: 11.5px;
+      color: var(--ink-2);
+      text-decoration: underline;
+      cursor: pointer
+    }
+
+    .tlink:hover {
+      color: var(--ink)
     }
 
     .tabs {
@@ -636,7 +642,12 @@
     .work {
       flex: 1;
       display: grid;
-      grid-template-columns: 176px 1fr 460px;
+      /* The rail is 460px wherever the window can afford it. Below that it
+         gives way before the page does: 1031px is the tool rail plus what the
+         stage needs to show the 21cm page whole (the page, the stage padding
+         and a scrollbar), so the rail takes what is left over, down to 300px.
+         Narrower still and the page is zoomed to fit — see fitPage(). */
+      grid-template-columns: 176px minmax(0, 1fr) clamp(300px, calc(100vw - 1031px), 460px);
       min-height: 0
     }
 
@@ -787,35 +798,178 @@
       stroke-dasharray: 3 2
     }
 
-    /* ---- The section roll ----
-       One lane per rung of the staff's ladder: 24 of them, 21 writable and 3
-       dead (the magic line and its two octave echoes). A block's TOP is its
-       pitch and its WIDTH the time it plays for, so the panel draws the same
-       two facts the staff does, at a size you can drag. */
+    /* ---- The section panel ----
+       Laid out the way a DAW's piano roll is: one line of readout, the ROLL,
+       one row of controls. The roll is first and the readout never wraps, so
+       selecting a note never moves the roll out from under the pointer. */
     .stime-wrap {
       display: grid;
       gap: 8px
     }
 
+    .ihead.sec {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px
+    }
+
+    .ihead.sec .big {
+      font-size: 15px;
+      white-space: nowrap
+    }
+
+    .sec-step {
+      flex: 0 0 auto;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      font-size: 15px;
+      line-height: 1;
+      color: var(--ink-2);
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 6px;
+      cursor: pointer
+    }
+
+    .sec-step:hover:not(:disabled) {
+      background: var(--hover)
+    }
+
+    .sec-step:disabled {
+      opacity: .35;
+      cursor: default
+    }
+
+    /* What is selected — or, with nothing selected, what the division holds. */
+    .sec-lcd {
+      flex: 1;
+      min-width: 0;
+      margin-left: 6px;
+      padding: 4px 9px;
+      border-radius: 6px;
+      background: var(--roll-bg);
+      font: 11px "JetBrains Mono", monospace;
+      color: var(--ink-3);
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
+    .sec-lcd b {
+      margin-right: 7px;
+      font-weight: 700;
+      color: var(--ink)
+    }
+
+    /* The control row: only what a drag cannot say. It keeps its height with
+       nothing selected, so the hint under it does not jump. */
+    .sed {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 26px
+    }
+
+    .sed.empty {
+      font-size: 11.5px;
+      color: var(--ink-3)
+    }
+
+    .sed .sed-len {
+      height: 26px;
+      padding: 0 6px;
+      font: inherit;
+      color: var(--ink);
+      background: var(--btn-2);
+      border: 1px solid var(--btn-border);
+      border-radius: 6px
+    }
+
+    .sed .sed-b {
+      min-width: 28px;
+      height: 26px;
+      padding: 0 8px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ink)
+    }
+
+    .sed .sed-b:hover:not(:disabled):not(.on) {
+      background: var(--hover)
+    }
+
+    .sed .sed-b.on {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff
+    }
+
+    .sed .sed-b:disabled {
+      opacity: .35;
+      cursor: default
+    }
+
+    .sed-pair {
+      display: flex
+    }
+
+    .sed-pair .sed-b:first-child:not(:last-child) {
+      border-radius: 6px 0 0 6px
+    }
+
+    .sed-pair .sed-b+.sed-b {
+      margin-left: -1px;
+      border-radius: 0 6px 6px 0
+    }
+
+    .sed .sed-del {
+      margin-left: auto
+    }
+
+    .sed-hint {
+      font-size: 10.5px;
+      line-height: 1.5;
+      color: var(--ink-3)
+    }
+
+    /* ---- The section roll ----
+       One lane per rung of the staff's ladder: 24 of them, 21 writable and 3
+       dead (the magic line and its two octave echoes). A block's TOP is its
+       pitch and its WIDTH the time it plays for, so the panel draws the same
+       two facts the staff does, at a size you can drag. */
     .roll {
       display: grid;
-      grid-template-columns: 32px 1fr;
-      user-select: none
+      grid-template-columns: 18px 20px 1fr;
+      user-select: none;
+      outline: none
+    }
+
+    /* The ring says the arrow keys are the roll's: they only are while it has
+       the focus. */
+    .roll:focus {
+      outline: 1px solid var(--accent);
+      outline-offset: 3px;
+      border-radius: 5px
     }
 
     .roll-gut {
-      font: 8.5px "JetBrains Mono", monospace;
+      grid-column: span 2;
+      font: 9px "JetBrains Mono", monospace;
       color: var(--ink-3);
       display: flex;
       align-items: center;
       justify-content: flex-end;
-      padding-right: 5px
+      padding-right: 6px
     }
 
     .roll-ruler {
       position: relative;
-      height: 12px;
-      font: 9.5px "JetBrains Mono", monospace;
+      height: 15px;
+      font: 10.5px "JetBrains Mono", monospace;
       color: var(--ink-3)
     }
 
@@ -830,13 +984,11 @@
       font-weight: 700
     }
 
-    /* The keys column is the roll's own gutter — the svara letter on every
-       lane, and the sheet's ▲■▼ sthayi mark on the Sa of each band, so three
-       marks say which octave you are in rather than 21 repeats of it. */
-    .roll-keys {
-      height: calc(var(--lanes) * var(--lane-h));
+    /* The sthayi, named once per band down the outside edge. */
+    .roll-bands {
       display: grid;
-      grid-auto-rows: var(--lane-h);
+      grid-template-rows: repeat(3, 1fr);
+      height: calc(var(--lanes) * var(--lane-h));
       box-sizing: border-box;
       border: 1px solid var(--btn-border);
       border-right: 0;
@@ -845,31 +997,77 @@
       background: var(--roll-bg)
     }
 
+    .roll-band {
+      display: grid;
+      place-content: center;
+      justify-items: center;
+      gap: 4px;
+      overflow: hidden;
+      color: var(--ink-3)
+    }
+
+    .roll-band+.roll-band {
+      border-top: 1px solid var(--btn-border)
+    }
+
+    /* The sheet's own ▲■▼, upright above the name it belongs to. */
+    .roll-band i {
+      font-style: normal;
+      font-size: 8px
+    }
+
+    .roll-band b {
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      white-space: nowrap;
+      font: 600 9px "Hanken Grotesk", sans-serif;
+      letter-spacing: .09em;
+      text-transform: uppercase
+    }
+
+    .roll-band[data-oct="0"] {
+      background: var(--roll-band);
+      color: var(--ink-2)
+    }
+
+    /* The keys column is the roll's own gutter — the svara letter on every
+       lane, loud only where this division has a note on it. */
+    .roll-keys {
+      height: calc(var(--lanes) * var(--lane-h));
+      display: grid;
+      grid-auto-rows: var(--lane-h);
+      box-sizing: border-box;
+      border: 1px solid var(--btn-border);
+      border-right: 0;
+      overflow: hidden;
+      background: var(--roll-bg)
+    }
+
     .roll-key {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 4px;
-      font: 7.5px "JetBrains Mono", monospace;
+      display: grid;
+      place-items: center;
+      font: 9.5px "JetBrains Mono", monospace;
       line-height: 1;
       color: var(--ink-3)
     }
 
-    .roll-key b {
+    .roll-key.on {
       font-weight: 700;
-      color: var(--ink-2)
+      color: var(--ink);
+      background: color-mix(in srgb, var(--roll-note) 30%, transparent)
     }
 
-    .roll-key i {
-      font-style: normal;
-      opacity: .8
+    /* The lane of the note the control row is editing. */
+    .roll-key.sel {
+      background: var(--accent);
+      color: #fff
     }
 
-    .roll-key[data-oct="0"] {
+    .roll-key[data-oct="0"]:not(.on) {
       background: var(--roll-band)
     }
 
-    .roll-key.dead {
+    .roll-key.dead:not(.on) {
       background: var(--roll-dead)
     }
 
@@ -894,6 +1092,13 @@
 
     .roll-lane[data-oct="0"] {
       background: var(--roll-band)
+    }
+
+    /* Ni is the top lane of a sthayi, so its upper edge is where one band
+       ends and the next begins. */
+    .roll-lane.top,
+    .roll-key.top {
+      border-top: 1px solid var(--btn-border)
     }
 
     /* A dead lane is the magic line, or one of its two octave echoes. Nothing
@@ -937,18 +1142,18 @@
 
     .roll-blk {
       position: absolute;
-      height: calc(var(--lane-h) - 2px);
+      height: calc(var(--lane-h) - 1px);
       margin-top: 1px;
       box-sizing: border-box;
       display: flex;
       align-items: center;
-      padding: 0 3px;
+      padding: 0 4px;
       overflow: hidden;
       white-space: nowrap;
-      border-radius: 2px;
+      border-radius: 3px;
       background: var(--roll-note);
       color: var(--roll-note-ink);
-      font: 7.5px "JetBrains Mono", monospace;
+      font: 10px "JetBrains Mono", monospace;
       cursor: grab;
       touch-action: none
     }
@@ -962,16 +1167,11 @@
       cursor: grabbing
     }
 
-    /* A lowered svara shares its rung with the natural — the notehead is what
-       separates them on the staff, so a mark is what separates them here. M2
-       is the one variant that is SHARP, and the staff draws it as a hollow
-       triangle rather than a filled goli, so it is marked differently. */
-    .roll-blk.var {
-      box-shadow: inset 3px 0 0 var(--roll-note-ink)
-    }
-
-    .roll-blk.m2 {
-      box-shadow: inset 0 -2px 0 var(--roll-note-ink)
+    /* The note the editor is showing. An inset ring, because the track clips
+       anything drawn outside a block on the top and bottom lanes. */
+    .roll-blk.sel {
+      background: var(--roll-note-lit);
+      box-shadow: inset 0 0 0 2px var(--ink)
     }
 
     .roll-blk.derived {
@@ -1000,12 +1200,6 @@
       outline-offset: 1px
     }
 
-    /* Sa and Pa have no lowered form, so shift-click writes nothing on them —
-       the cursor must not promise otherwise. */
-    .roll-blk.novar {
-      cursor: grab
-    }
-
     .roll-nm {
       overflow: hidden;
       font-weight: 700;
@@ -1014,14 +1208,18 @@
 
     .roll-rests {
       position: relative;
-      height: 15px;
-      margin-top: 3px;
+      height: 20px;
+      margin-top: 4px;
       box-sizing: border-box;
       border: 1px solid var(--btn-border);
       border-radius: 4px;
       background: var(--roll-bg);
       overflow: hidden;
       touch-action: none
+    }
+
+    .roll-gut:last-of-type {
+      margin-top: 4px
     }
 
     /* Silence reads as the absence of a note: no fill, only an outline. */
@@ -1032,25 +1230,30 @@
       box-sizing: border-box;
       display: flex;
       align-items: center;
-      justify-content: flex-end;
-      padding: 0 4px;
+      padding: 0 5px;
       overflow: hidden;
-      border: 1px dashed var(--ink-3);
-      border-radius: 2px;
-      color: var(--ink-3);
-      font: 8px "JetBrains Mono", monospace;
+      border: 1px dashed var(--ink-2);
+      border-radius: 3px;
+      color: var(--ink-2);
+      font: 10px "JetBrains Mono", monospace;
+      cursor: pointer;
       touch-action: none
     }
 
+    /* Room nobody has written in: not a rest, so not drawn as one. */
     .roll-rest.derived {
-      border-color: color-mix(in srgb, var(--ink-3) 45%, transparent);
-      color: color-mix(in srgb, var(--ink-3) 70%, transparent)
+      border-color: color-mix(in srgb, var(--ink-3) 35%, transparent);
+      cursor: default
     }
 
     .roll-rest.lit,
-    .roll-rest:hover {
-      border-style: solid;
-      color: var(--ink-2)
+    .roll-rest.edit:hover {
+      border-style: solid
+    }
+
+    .roll-rest.sel {
+      border: 2px solid var(--ink);
+      color: var(--ink)
     }
 
     .roll-grip {
@@ -1058,76 +1261,18 @@
       top: 0;
       bottom: 0;
       right: 0;
-      width: 7px;
+      width: 8px;
       cursor: ew-resize;
       touch-action: none;
-      border-right: 2px solid var(--roll-note-ink)
+      border-right: 3px solid var(--roll-note-ink)
     }
 
     .roll-rest .roll-grip {
-      border-right-color: var(--ink-3)
+      border-right-color: var(--ink-2)
     }
 
     .roll-grip:hover {
       background: color-mix(in srgb, var(--roll-note-ink) 35%, transparent)
-    }
-
-    .stime-row.lit {
-      color: var(--ink)
-    }
-
-    .stime-rows {
-      display: grid;
-      gap: 3px
-    }
-
-    .stime-row {
-      display: grid;
-      grid-template-columns: 14px 1fr auto 60px;
-      align-items: center;
-      gap: 6px;
-      font: 10.5px "JetBrains Mono", monospace;
-      color: var(--ink-2)
-    }
-
-    .stime-n {
-      color: var(--ink-3);
-      text-align: right
-    }
-
-    .stime-nm {
-      font-weight: 700;
-      color: var(--ink)
-    }
-
-    .stime-sym {
-      color: var(--ink-3)
-    }
-
-    .stime-carry {
-      color: var(--ink-3);
-      margin-left: 3px
-    }
-
-    .stime-input {
-      width: 60px;
-      box-sizing: border-box;
-      color: var(--ink-2);
-      background: var(--btn-2);
-      border: 1px solid var(--btn-border);
-      border-radius: 4px;
-      padding: 3px 4px;
-      font: 10px "JetBrains Mono", monospace
-    }
-
-    .stime-fixed {
-      color: var(--ink-3);
-      text-align: right
-    }
-
-    .stime-sum {
-      color: var(--ink-3);
-      font: 10px "JetBrains Mono", monospace
     }
 
     .tools {
@@ -1400,8 +1545,7 @@
     }
 
     /* Palette braces are drag sources as well as buttons. */
-    #repeatGrid .glyph.rep,
-    #braceTools .rb {
+    #repeatGrid .glyph.rep {
       cursor: grab;
       touch-action: none
     }
@@ -1574,7 +1718,10 @@
 
     .stage {
       overflow: auto;
-      padding: 26px;
+      /* The gutter is held open so the room fitPage() measures does not change
+         when a score grows long enough to scroll. */
+      scrollbar-gutter: stable;
+      padding: clamp(10px, 1.6vw, 26px);
       background: var(--bg)
     }
 
@@ -1722,8 +1869,75 @@
     }
 
     table.tones .mk {
-      height: 23px
+      height: 23px;
+      cursor: pointer
     }
+
+    /* A tone switched off for this sthayi: a blank white cell. */
+    table.tones .mk.off {
+      background: #fff
+    }
+
+    table.tones .mk.off > * {
+      visibility: hidden
+    }
+
+    .tones-wrap {
+      position: relative;
+      flex: 0 0 auto
+    }
+
+    /* Beside S and beside N, at the height of the letter row — which is above
+       the head rule, so the rule is not interrupted. No background, for the
+       same reason. */
+    .tone-nav {
+      position: absolute;
+      top: 0;
+      height: 24px;
+      padding: 0 4px;
+      border: 0;
+      background: none;
+      color: #111;
+      font-size: 11px;
+      line-height: 24px;
+      cursor: pointer
+    }
+
+    .tone-nav.prev {
+      right: 100%
+    }
+
+    .tone-nav.next {
+      left: 100%
+    }
+
+    .tone-nav:disabled {
+      opacity: .2;
+      cursor: default
+    }
+
+    /* Which sthayi the legend is showing. Screen only, like the arrows. */
+    .tone-name {
+      position: absolute;
+      bottom: 100%;
+      left: 0;
+      right: 0;
+      padding-bottom: 3px;
+      text-align: center;
+      font: 700 11px Arial;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #111
+    }
+
+    /* A key whose tone the legend has switched off: it sounds, writes nothing. */
+    .piano-keys .toneoff .sv {
+      font-weight: 400;
+      text-decoration: line-through
+    }
+
+    .piano-keys .wkey.toneoff .sv { color: #b4b4b8 }
+    .piano-keys .bkey.toneoff .sv { color: #888 }
 
     .mk-o {
       display: inline-block;
@@ -1866,6 +2080,15 @@
       border-top: 0.238cm solid currentColor
     }
 
+    /* View ▸ Row marks, switched off: the ▲■▼ sthayi key is put away ON
+       SCREEN. The row number stays. Print still carries the key, and the PDF
+       draws its own, because it is part of the printed sheet. */
+    @media screen {
+      .sheet.nogutter .srow .sth {
+        display: none
+      }
+    }
+
     /* Page number, centred at the FOOT of the sheet in the same yellow the tone
        legend and the emblem use — pinned to the page like the brand line beside
        it, not trailing the last row, so a short score still prints it where the
@@ -1891,6 +2114,32 @@
       font-size: 13px;
       font-weight: 700;
       color: #1f1b20
+    }
+
+    /* Page view's seam between two pages — see pageEnd() in notation.js, which
+       writes the heights. The block margin cancels .score-rows' gap either
+       side of it, and the inline one reaches out over the sheet's side padding
+       so the pill and the brand line sit where the sheet's own do. */
+    .pgend {
+      flex: none;
+      margin: -18px calc(-1.1952cm - 2px)
+    }
+
+    .pgfoot {
+      position: relative
+    }
+
+    .pggap {
+      background: var(--bg);
+      box-shadow: inset 0 7px 6px -6px rgba(0, 0, 0, .28), inset 0 -7px 6px -6px rgba(0, 0, 0, .28)
+    }
+
+    /* Page view off: one continuous strip, which is not a page and has no
+       number. Print keeps its pill. */
+    @media screen {
+      .sheet.flow>.pagenum {
+        display: none
+      }
     }
 
     /* Honour the width/height attributes rowSVG sets in cm — do not flex. */
@@ -1943,11 +2192,30 @@
       padding: 10px 16px 14px
     }
 
+    /* Wraps: with a MIDI device connected the head carries the mode and fill
+       switches AND the device controls, which is more than a laptop is wide. */
     .dock-head {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
-      gap: 12px;
+      gap: 6px 12px;
       margin-bottom: 9px
+    }
+
+    .dock-head .group {
+      gap: 4px
+    }
+
+    .dock-head .pillbtn {
+      height: 28px;
+      padding: 0 10px;
+      gap: 6px;
+      font-size: 12px
+    }
+
+    .dock-head .pillbtn svg {
+      width: 15px;
+      height: 15px
     }
 
     .dock-head .label {
@@ -2244,7 +2512,8 @@
 
     .piano {
       position: relative;
-      height: 180px;
+      /* A fifth of the window, so a short one keeps room for the sheet. */
+      height: clamp(110px, 20vh, 180px);
       display: flex;
       border-radius: 10px;
       overflow: hidden;
@@ -2578,7 +2847,9 @@
 
     .kcap {
       min-width: 0;
-      height: 40px;
+      /* Five rows of these are the dock in Key map mode, so on a short window
+         they give height back to the sheet. */
+      height: clamp(30px, 5vh, 40px);
       border-radius: 6px;
       background: var(--btn);
       border: 1px solid var(--btn-border);
@@ -2660,55 +2931,6 @@
       font-family: "JetBrains Mono", monospace
     }
 
-    .ctlbar {
-      width: 158px;
-      flex: 0 0 auto;
-      display: flex;
-      flex-direction: column;
-      gap: 8px
-    }
-
-    .ctlbar label {
-      font-size: 9.5px;
-      letter-spacing: .1em;
-      text-transform: uppercase;
-      color: var(--ink-3);
-      display: block;
-      margin-bottom: 4px;
-      font-weight: 700
-    }
-
-    .actions {
-      display: flex;
-      gap: 6px
-    }
-
-    .actions button {
-      flex: 1;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--ink-2);
-      background: var(--btn);
-      border: 1px solid var(--btn-border);
-      border-radius: 6px;
-      padding: 7px 0;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 5px
-    }
-
-    .actions button:hover {
-      background: var(--hover);
-      color: var(--ink)
-    }
-
-    .actions button svg {
-      width: 13px;
-      height: 13px
-    }
-
     #pop {
       position: fixed;
       z-index: 60;
@@ -2768,97 +2990,61 @@
       font-weight: 700
     }
 
-    .cw-link {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      justify-content: space-between;
-      padding: 4px 10px 8px
-    }
-
-    .cw-link .mono {
-      font-size: 12px;
-      color: var(--ink-2)
-    }
-
-    .cw-copy {
-      font-size: 11px;
-      font-weight: 700;
-      border: 1px solid var(--btn-border);
-      background: var(--btn);
-      border-radius: 6px;
-      padding: 4px 9px;
-      cursor: pointer;
-      color: var(--ink)
-    }
-
-    .cw-role {
+    /* The Cowork bar. Cowork is not a page: it sits on the editor, above the
+       sheet, so a teacher writes the song with the tools already here. */
+    .cw-bar {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      flex-wrap: wrap;
       gap: 10px;
-      padding: 2px 10px 8px;
-      font-size: 12.5px;
-      color: var(--ink-2)
-    }
-
-    .cw-role .seg button {
-      font-size: 11.5px;
-      padding: 5px 10px
-    }
-
-    .cw-list {
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      padding: 2px 6px
-    }
-
-    .cw-p {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 6px 8px;
-      border-radius: 8px
-    }
-
-    .cw-p .av {
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      display: grid;
-      place-items: center;
-      color: #fff;
-      font-weight: 700;
-      font-size: 12px;
-      flex: 0 0 auto
-    }
-
-    .cw-p .who {
-      flex: 1;
-      line-height: 1.2
-    }
-
-    .cw-p .who b {
+      padding: 6px 12px;
+      background: var(--chrome);
+      border-bottom: 1px solid var(--border);
       font-size: 13px
     }
 
-    .cw-p .who small {
-      display: block;
-      font-size: 11px;
-      color: var(--ink-3)
+    .cw-bar .grp {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px
     }
 
-    .cw-p .pres {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--ink-3);
-      flex: 0 0 auto
+    .cw-bar .sp { flex: 1 }
+
+    .cw-bar .msg {
+      color: var(--ink-2);
+      font-size: 12px
     }
 
-    .cw-p .pres.on {
-      background: #3fb06a
+    .cw-bar select {
+      height: 28px;
+      max-width: 260px;
+      font: inherit;
+      font-size: 12.5px;
+      color: var(--ink);
+      background: var(--btn);
+      border: 1px solid var(--btn-border);
+      border-radius: 7px;
+      padding: 0 6px
+    }
+
+    .cw-bar select option { background: var(--pop); color: var(--ink) }
+
+    /* Last, so it beats the display .grp and .mbtn set for themselves. */
+    .cw-bar[hidden], .cw-bar [hidden] { display: none }
+
+    /* Editing is put away while a lesson is open: the keys are judged, not
+       written, and the tools would be offering to change someone's lesson. */
+    body.lesson .tools, body.lesson .inspect {
+      pointer-events: none;
+      opacity: .4
+    }
+
+    /* The key a play-along is waiting for. A ring, so it reads on a white key
+       and a black one alike and never looks like a key being held. */
+    .piano-keys .wkey.next, .piano-keys .bkey.next {
+      box-shadow: inset 0 0 0 3px var(--accent)
     }
 
     .cw-note {
@@ -2888,6 +3074,60 @@
       }
     }
 
+    /* ---- smaller windows ----
+       With every label showing the toolbar needs about 1400px in English and
+       about 1500 in Tamil, the widest (both measured). Below that it
+       sheds label text and keeps the icon (each of these buttons carries a
+       title); only after the tightening steps under it does it wrap to a
+       second row. */
+    @media(max-width:1459px) {
+      .toolbar #exportBtn,
+      .toolbar #pageViewBtn,
+      .toolbar #legendBtn {
+        font-size: 0;
+        gap: 0;
+        padding: 0 10px
+      }
+    }
+
+    @media(max-width:1535px) {
+      /* Tightened spacing is what keeps a 1366px laptop on one row. */
+      .toolbar {
+        column-gap: 3px
+      }
+
+      .toolbar .sep {
+        margin: 0 1px
+      }
+
+      .toolbar .sa-picker,
+      .toolbar .bpm-label {
+        font-size: 0
+      }
+
+      .toolbar .sa-picker select {
+        font-size: 13px
+      }
+    }
+
+    /* The last step before a second row: 1280px is a 1080p laptop at 150%. */
+    @media(max-width:1360px) {
+      .toolbar .ico {
+        width: 31px
+      }
+
+      .toolbar .sa-picker select {
+        width: 96px
+      }
+    }
+
+    /* A short window keeps the key map's picture and drops its caption. */
+    @media(max-height:700px) {
+      .kbmap .hint {
+        display: none
+      }
+    }
+
     @media(max-width:880px) {
       .work {
         grid-template-columns: 1fr
@@ -2895,10 +3135,6 @@
 
       .tools,
       .inspect {
-        display: none
-      }
-
-      .ctlbar {
         display: none
       }
     }
@@ -3708,10 +3944,12 @@
 
       .menubar,
       .toolbar,
-      .ctlbar,
       .tools,
       .dock,
-      .kbmap {
+      .kbmap,
+      .tone-nav,
+      .tone-name,
+      .pgend {
         display: none !important
       }
 
@@ -3762,9 +4000,9 @@
         <span class="app-brand-chip">SCORER</span>
       </button>
       <span class="app-brand-sep"></span>
-      <button class="m" data-menu="File">File</button><button class="m" data-menu="Edit">Edit</button>
-      <button class="m" data-menu="View">View</button><button class="m" data-menu="Plugins">Plugins</button>
-      <button class="m" data-menu="Help">Help</button>
+      <button class="m" data-menu="File" data-i18n="File">File</button><button class="m" data-menu="Edit" data-i18n="Edit">Edit</button>
+      <button class="m" data-menu="View" data-i18n="View">View</button><button class="m" data-menu="Plugins" data-i18n="Plugins">Plugins</button>
+      <button class="m" data-menu="Help" data-i18n="Help">Help</button>
       <div class="grow"></div>
       <div class="net-status" id="netStatus" title="Connection status"><span class="net-dot"></span><span
           class="net-text">Online</span></div>
@@ -3774,7 +4012,7 @@
           <path d="M3 20a6 6 0 0 1 12 0" />
           <circle cx="17" cy="9" r="2.4" />
           <path d="M15.5 20a5 5 0 0 1 6.5-4.7" />
-        </svg>Cowork</button>
+        </svg><span data-i18n="Cowork">Cowork</span></button>
 
       <button class="mbtn" id="langBtn" title="Language"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
           stroke-width="1.7">
@@ -3793,7 +4031,10 @@
         </svg></button>
     </div>
 
+    <!-- One toolbar, four named groups. Input and fill modes live in the dock,
+         beside the keys they govern; repeats live in the Tools rail. -->
     <div class="toolbar">
+      <div class="tgroup"><span class="tcap" data-i18n="File">File</span><div class="trow">
       <button class="ico" id="bNew" title="New (Ctrl+N)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
           stroke-width="1.7">
           <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
@@ -3808,7 +4049,13 @@
           <path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
           <path d="M8 3v5h7M8 21v-7h8v7" />
         </svg></button>
-      <span class="sep"></span>
+      <button class="pillbtn" id="exportBtn" popovertarget="exportMenu" title="Export the score"><svg viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M12 3v12M8 11l4 4 4-4" />
+          <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+        </svg><span data-i18n="Export">Export</span></button>
+      </div></div>
+      <div class="tgroup"><span class="tcap" data-i18n="Edit">Edit</span><div class="trow">
       <button class="ico" id="bUndo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
           stroke-width="1.8">
           <path d="M9 14L4 9l5-5" />
@@ -3819,32 +4066,12 @@
           <path d="M15 14l5-5-5-5" />
           <path d="M20 9H9a6 6 0 0 0 0 12h6" />
         </svg></button>
-      <button class="ico" id="bExport" title="Export SVG"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          stroke-width="1.8">
-          <path d="M12 3v12M8 11l4 4 4-4" />
-          <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+      <button class="ico" id="bClear" title="Clear the page (Ctrl+Z brings it back)"><svg viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="1.8">
+          <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" />
         </svg></button>
-      <button class="ico" id="bPdf" title="Export PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          stroke-width="1.7">
-          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
-          <path d="M14 3v5h5" />
-          <text x="12" y="17" text-anchor="middle" font-size="6" font-weight="700" fill="currentColor" stroke="none" font-family="Arial">PDF</text>
-        </svg></button>
-      <button class="ico" id="bMp3" title="Export MP3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          stroke-width="1.7">
-          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
-          <path d="M14 3v5h5" />
-          <text x="12" y="17" text-anchor="middle" font-size="5.4" font-weight="700"
-            fill="currentColor" stroke="none" font-family="Arial">MP3</text>
-        </svg></button>
-      <button class="ico" id="bMidi" title="Export MIDI"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          stroke-width="1.7">
-          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
-          <path d="M14 3v5h5" />
-          <text x="12" y="17" text-anchor="middle" font-size="5" font-weight="700"
-            fill="currentColor" stroke="none" font-family="Arial">MID</text>
-        </svg></button>
-      <span class="sep"></span>
+      </div></div>
+      <div class="tgroup"><span class="tcap" data-i18n="View">View</span><div class="trow">
       <div class="zoom" id="zoomBtn"><b class="mono" id="zoomVal">100%</b><span class="car"><svg width="12" height="12"
             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M6 9l6 6 6-6" />
@@ -3853,13 +4080,22 @@
           stroke="currentColor" stroke-width="1.7">
           <rect x="4" y="3" width="16" height="18" rx="2" />
           <path d="M8 7h8M8 11h8M8 15h5" />
-        </svg>Page View</button>
+        </svg><span data-i18n="Page view">Page view</span></button>
       <button class="pillbtn" id="legendBtn" title="Write each note's svara name on the sheet">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
           <path d="M3 12l7-7h7a4 4 0 0 1 4 4v7l-7 7z" />
           <circle cx="16.5" cy="7.5" r="1.3" />
-        </svg>Legend</button>
-      <span class="sep"></span>
+        </svg><span data-i18n="Svara names">Svara names</span></button>
+      <button class="pillbtn on" id="gutterBtn" title="Octave marks beside each row (screen only)">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 3l4 5H8zM9 10h6v4H9zM12 21l4-5H8z" />
+        </svg></button>
+      <div class="group" id="notationSys">
+        <button class="pillbtn on" data-sys="DNG">DNG</button><button class="pillbtn" data-sys="DNR">DNR</button>
+      </div>
+      </div></div>
+      <div class="grow"></div>
+      <div class="tgroup"><span class="tcap" data-i18n="Transport">Transport</span><div class="trow">
       <div class="transport">
         <button class="ico" id="bStart" title="To start"><svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M7 5h2v14H7zM20 5v14l-9-7z" />
@@ -3870,11 +4106,6 @@
         <button class="ico" id="bStop" title="Stop"><svg viewBox="0 0 24 24" fill="currentColor">
             <rect x="6" y="6" width="12" height="12" rx="1.5" />
           </svg></button>
-        <button class="ico" id="reloadBtn" title="Reload preset"><svg viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="1.8">
-            <path d="M21 12a9 9 0 1 1-3-6.7" />
-            <path d="M21 3v5h-5" />
-          </svg></button>
         <button class="ico big" id="metroBtn" title="Metronome (click on/off)"><svg viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="1.7">
             <path d="M8 3h8l3 18H5z" />
@@ -3882,8 +4113,8 @@
           </svg></button>
       </div>
       <!-- Options filled in by installMetronomeSounds() from the SOUNDS table. -->
-      <label class="sa-picker" title="Metronome sound">SOUND
-        <select id="metroSound"></select>
+      <label class="sa-picker" title="Metronome sound">
+        <select id="metroSound" aria-label="Metronome sound"></select>
       </label>
       <div class="bpm-ctl" title="Playback tempo">
         <span class="bpm-label">BPM</span>
@@ -3891,79 +4122,84 @@
         <input id="bpmVal" type="number" inputmode="numeric" value="72" min="20" max="240" step="1" />
         <button id="bpmUp" title="Increase tempo">+</button>
       </div>
-      <div class="grow"></div>
-      <div class="group" id="fillModes" title="Who fills the silence in a box">
-        <button class="pillbtn on" data-fill="auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="1.7">
-            <rect x="3" y="6" width="18" height="12" rx="2" />
-            <path d="M7 10v4M11 10v4M15 10v4M19 10v4" />
-          </svg>Auto fill</button>
-        <button class="pillbtn" data-fill="metro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="1.7">
-            <path d="M8 3h8l3 18H5z" />
-            <path d="M12 17V8l4-3" />
-          </svg>Metro fill</button>
-      </div>
-      <div class="group" id="inputModes">
-        <button class="pillbtn" data-mode="keyboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="1.7">
-            <rect x="2" y="6" width="20" height="12" rx="2" />
-            <path d="M6 10h.01M10 10h.01M14 10h.01M8 14h8" />
-          </svg>Key map</button>
-        <button class="pillbtn on" data-mode="piano"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="1.7">
-            <rect x="3" y="5" width="18" height="14" rx="1.5" />
-            <path d="M8 5v9M13 5v9M18 5v9" />
-          </svg>Piano</button>
-        <button class="pillbtn" data-mode="midi"><svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M9 18V6l10-2v12" stroke="currentColor" stroke-width="1.7" fill="none" />
-            <circle cx="6.5" cy="18" r="2.5" />
-            <circle cx="16.5" cy="16" r="2.5" />
-          </svg>MIDI</button>
-      </div>
-      <span class="sep"></span>
-      <div class="group" id="notationSys">
-        <button class="pillbtn on" data-sys="DNG">DNG</button><button class="pillbtn" data-sys="DNR">DNR</button>
-      </div>
-    </div>
-
-    <div class="toolbar2">
-      <span class="t2lab">Repeat</span>
-      <div class="group" id="braceTools"></div>
-      <span class="sep"></span>
-      <button class="brace" id="clearBars">Clear marks</button>
-      <div class="grow"></div>
-      <button class="pillbtn" id="timeSigBtn">Time Signatures<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          stroke-width="2">
+      <!-- Says which metre is in force; updateTalaLine() fills the label. -->
+      <button class="pillbtn" id="timeSigBtn"><span id="timeSigLabel">4/4</span><svg viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2">
           <path d="M6 9l6 6 6-6" />
         </svg></button>
+      </div></div>
+    </div>
+
+    <!-- The four exports, behind one button. A native popover: light dismiss
+         and Esc come with it, and the ids are unchanged so every listener and
+         both smoke checks still find their button. -->
+    <div id="exportMenu" popover>
+      <button class="xit" id="bPdf" popovertarget="exportMenu" popovertargetaction="hide" data-i18n="Export PDF">Export PDF</button>
+      <button class="xit" id="bExport" popovertarget="exportMenu" popovertargetaction="hide" data-i18n="Export SVG">Export SVG</button>
+      <button class="xit" id="bMp3" popovertarget="exportMenu" popovertargetaction="hide" data-i18n="Export MP3">Export MP3</button>
+      <button class="xit" id="bMidi" popovertarget="exportMenu" popovertargetaction="hide" data-i18n="Export MIDI">Export MIDI</button>
     </div>
 
     <div class="tabs" id="tabs"></div>
 
+    <!-- Cowork lives ON the editor, not on a page of its own: the teacher writes
+         the song with the tools already here and this bar turns it into a
+         lesson. cowork.js shows the half that fits the role, and swaps the
+         first group for the second while a lesson is being played. -->
+    <div class="cw-bar" id="coworkBar">
+      <div class="seg" id="cwRole">
+        <button data-r="teacher" type="button">Teacher</button>
+        <button data-r="student" type="button">Student</button>
+      </div>
+      <span class="grp" id="cwHome">
+        <button class="mbtn accent" id="cwAdd" data-for="teacher" type="button"
+          title="Make a lesson of the score you are writing">Save as lesson</button>
+        <button class="mbtn" id="cwOpen" data-for="student" type="button">Open lesson file</button>
+        <select id="cwPick" aria-label="Lessons"></select>
+        <button class="mbtn" id="cwSave" data-for="teacher" type="button"
+          title="The file you send to a student">Save lesson file</button>
+        <button class="mbtn" id="cwDel" data-for="teacher" type="button">Delete</button>
+        <button class="mbtn accent" id="cwPlay" data-for="student" type="button">Play</button>
+        <span class="msg" id="cwMsg"></span>
+      </span>
+      <span class="grp" id="cwLesson" hidden>
+        <button class="mbtn" id="lsnExit" type="button">Exit lesson</button>
+        <b id="lsnTitle"></b>
+        <div class="seg" id="lsnMode">
+          <button data-m="listen" type="button">Listen</button>
+          <button data-m="play" type="button">Play along</button>
+        </div>
+        <button class="mbtn" id="lsnGo" type="button"></button>
+      </span>
+      <span class="sp"></span>
+      <b id="lsnScore"></b>
+      <input type="file" id="cwFile" accept=".json,.dng.json" hidden>
+    </div>
+
     <div class="work">
       <aside class="tools">
-        <div class="tools-title">Tools</div>
+        <div class="tools-title" data-i18n="Tools">Tools</div>
         <div class="tsec">
-          <div class="head">Sound Symbol <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <div class="head"><span data-i18n="Notes">Notes</span> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M6 9l6 6 6-6" />
             </svg></div>
           <div class="tgrid" id="soundGrid"></div>
         </div>
         <div class="tsec">
-          <div class="head">Rest Symbol <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <div class="head"><span data-i18n="Rests">Rests</span> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M6 9l6 6 6-6" />
             </svg></div>
           <div class="tgrid" id="restGrid"></div>
         </div>
         <div class="tsec">
-          <div class="head">Repeat <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <div class="head"><span data-i18n="Repeats">Repeats</span> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M6 9l6 6 6-6" />
             </svg></div>
           <div class="tgrid" id="repeatGrid"></div>
+          <button class="tlink" id="clearBars" type="button" data-i18n="Clear marks">Clear marks</button>
         </div>
         <div class="tsec">
-          <div class="head">Octave Symbol <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <div class="head"><span data-i18n="Octave">Octave</span> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M6 9l6 6 6-6" />
             </svg></div>
           <div class="tgrid oct" id="octGrid"></div>
@@ -3971,7 +4207,7 @@
         <!-- Layout tools change how the sheet is BROKEN UP, not what is on it.
              Break is the only one so far: arm it and click a division. -->
         <div class="tsec">
-          <div class="head">Layout <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <div class="head"><span data-i18n="Layout">Layout</span> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M6 9l6 6 6-6" />
             </svg></div>
           <div class="tgrid" id="layoutGrid"></div>
@@ -3999,7 +4235,15 @@
                      because the legend states the scale and T.S. states the
                      metre. -->
                 <span class="headrule"></span>
-                <table class="tones" id="tonesTable"></table>
+                <!-- The arrows step the legend between the three sthayis.
+                     Screen only: they hang outside the table, above the rule,
+                     so the rule still runs unbroken into the table's edge. -->
+                <div class="tones-wrap">
+                  <button class="tone-nav prev" id="tonePrev" type="button" title="Lower sthayi" aria-label="Lower sthayi">&#9664;</button>
+                  <span class="tone-name" id="toneName" data-i18n="Madhya">Madhya</span>
+                  <table class="tones" id="tonesTable"></table>
+                  <button class="tone-nav next" id="toneNext" type="button" title="Higher sthayi" aria-label="Higher sthayi">&#9654;</button>
+                </div>
               </div>
               <!-- The four fields the printed sheet carries under its header:
                    what the piece is on the left, what it is played in on the
@@ -4022,16 +4266,39 @@
       </main>
 
       <aside class="inspect">
-        <div class="tools-title">Section Timing</div>
+        <div class="tools-title" data-i18n="Section">Section</div>
         <div id="inspectBody"></div>
       </aside>
     </div>
 
     <footer class="dock">
       <div class="dock-head">
-        <span class="label" id="dockLabel">Piano Input</span>
-        <div class="seg" id="octSeg2"><button data-oct="-1">Mandra</button><button data-oct="0"
-            class="active">Madhya</button><button data-oct="1">Taara</button></div>
+        <!-- How notes get in, and who writes the silence between them. Both
+             are about ENTRY, so they sit with the keys rather than in the
+             toolbar. The sthayi is chosen in the Tools rail's Octave palette. -->
+        <span class="label" data-i18n="Input">Input</span>
+        <div class="group" id="inputModes">
+          <button class="pillbtn" data-mode="keyboard" title="Type notes on the computer keyboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="1.7">
+              <rect x="2" y="6" width="20" height="12" rx="2" />
+              <path d="M6 10h.01M10 10h.01M14 10h.01M8 14h8" />
+            </svg><span data-i18n="Key map">Key map</span></button>
+          <button class="pillbtn on" data-mode="piano" title="Click the on-screen piano"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="1.7">
+              <rect x="3" y="5" width="18" height="14" rx="1.5" />
+              <path d="M8 5v9M13 5v9M18 5v9" />
+            </svg><span data-i18n="Piano">Piano</span></button>
+          <button class="pillbtn" data-mode="midi" title="Play a connected MIDI keyboard"><svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M9 18V6l10-2v12" stroke="currentColor" stroke-width="1.7" fill="none" />
+              <circle cx="6.5" cy="18" r="2.5" />
+              <circle cx="16.5" cy="16" r="2.5" />
+            </svg>MIDI</button>
+        </div>
+        <span class="label" data-i18n="Fill rests">Fill rests</span>
+        <div class="group" id="fillModes" title="Who fills the silence in a division">
+          <button class="pillbtn on" data-fill="auto" title="Pad every division with rests automatically" data-i18n="Auto">Auto</button>
+          <button class="pillbtn" data-fill="metro" title="The metronome writes rests while you are not playing" data-i18n="Metronome">Metronome</button>
+        </div>
         <select id="pianoSpan" class="span-sel" title="How many piano keys to show"></select>
         <select id="midiKeys" class="span-sel" title="How many keys your MIDI keyboard has" hidden></select>
         <div class="status" id="inputStatus"><span class="dot"></span><span id="statusText">On-screen piano — no MIDI device
@@ -4073,22 +4340,11 @@
         </div>
         <div class="kbmap">
           <div class="kbmap-head">
-            <h4>Keyboard Map</h4>
-            <button class="kb-edit" id="kbEditBtn" type="button" title="Edit key bindings">Edit keys…</button>
+            <h4 data-i18n="Key map">Key map</h4>
+            <button class="kb-edit" id="kbEditBtn" type="button" title="Edit key bindings" data-i18n="Edit keys…">Edit keys…</button>
           </div>
           <div class="keyrow" id="kbRow"></div>
           <div class="hint" id="kbHint"></div>
-        </div>
-        <div class="ctlbar">
-          <div class="actions">
-            <button id="undoBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 14L4 9l5-5" />
-                <path d="M4 9h11a6 6 0 0 1 0 12h-3" />
-              </svg>Undo</button>
-            <button id="clearBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" />
-              </svg>Clear</button>
-          </div>
         </div>
       </div>
     </footer>
@@ -4238,7 +4494,7 @@
   </div>
 
   <div id="pop"></div>
-  <input type="file" id="fileInput" accept=".json,.dng.json,.mid,.midi,.xml,.musicxml,.mxl" style="display: none;">
+  <input type="file" id="fileInput" accept=".json,.dng.json,.mid,.midi,.xml,.musicxml" style="display: none;">
   <script src="./vendor/jspdf.umd.min.js"></script>
   <script src="./vendor/svg2pdf.umd.min.js"></script>
   <script src="./vendor/lamejs.iife.js"></script>

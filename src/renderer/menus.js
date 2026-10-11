@@ -16,6 +16,9 @@ import { openAbout } from './about.js';
 import { openMonitor } from './midi-monitor.js';
 import { exportMP3 } from './mp3.js';
 import { exportMIDI } from './midi-export.js';
+import { exportPDF } from './pdf.js';
+import { stopPlay } from './playback.js';
+import { l10n } from './i18n.js';
 // The metre picker lives with the metre. It reports a change by the same
 // 'tala:changed' event this module already listens for, so neither imports
 // the other.
@@ -28,11 +31,30 @@ function updateZoomContainerSize() {
   const container = document.getElementById('zoomContainer');
   if (!sheetwrap || !container) return;
 
-  container.style.width = `${1000 * state.zoom}px`;
+  // The page's own layout width. This read 1000, which is wider than the 21cm
+  // page: the stage then scrolled sideways over nothing in any window under
+  // ~1500px, and the page sat left of centre in a wide one.
+  container.style.width = `${sheetwrap.offsetWidth * state.zoom}px`;
   container.style.height = `${sheetwrap.offsetHeight * state.zoom}px`;
 }
 
-function setZoom(z) {
+// Whether the zoom is following the window. True from launch until a zoom is
+// chosen by hand, and again after "Fit width" is.
+let fitting = true;
+
+// The page as large as the stage can show it whole, and never above true size:
+// on a window with room this is exactly 100%, so nothing changes there.
+function fitPage() {
+  const stage = document.querySelector('.stage');
+  const sheetwrap = document.getElementById('sheetwrap');
+  if (!stage || !sheetwrap || !sheetwrap.offsetWidth) return;
+  const cs = getComputedStyle(stage);
+  const room = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  setZoom(Math.min(1, room / sheetwrap.offsetWidth), true);
+}
+
+function setZoom(z, fit = false) {
+  fitting = fit;
   state.zoom = Math.max(0.5, Math.min(2, z));
   const sheetwrap = document.getElementById('sheetwrap');
   if (sheetwrap) {
@@ -47,14 +69,18 @@ function setZoom(z) {
 // layout, so this stays as the one place a caption would be written if the
 // sheet ever wants one back, and updates the element only if it is there.
 function updateTalaLine() {
-  const t = currentTala();
+  const tala = currentTala();
   // The T.S. button says which metre is selected — the sheet prints only the
   // number, so the NAME has to be readable somewhere.
+  // It also carries the name on its face now, which is what lets it sit in
+  // the transport group in place of a "Time Signatures" caption.
   const btn = document.getElementById('timeSigBtn');
-  if (btn) btn.title = `Time signature — ${t.label} (${t.formula} = ${t.beats}/4)`;
+  if (btn) btn.title = `Time signature — ${tala.label} (${tala.formula} = ${tala.beats}/4)`;
+  const lbl = document.getElementById('timeSigLabel');
+  if (lbl) lbl.textContent = `${tala.beats}/4 · ${tala.label}`;
   const el = document.getElementById('talaLine');
   if (!el) return;
-  el.innerHTML = `${t.label} &nbsp;=&nbsp; (${t.formula})`;
+  el.innerHTML = `${tala.label} &nbsp;=&nbsp; (${tala.formula})`;
 }
 
 // Items that show a state rather than just firing. menuHtml() is rebuilt every
@@ -77,7 +103,7 @@ function menuHtml(name) {
       // shortcut inline ("Ctrl+Z / Y  →  undo / redo") rather than in the
       // trailing column, and shortcutLabel() is a no-op everywhere it does
       // not match, so running it over both is safe.
-      : `<div class="it" data-act="${it[1]}">${CHECKED[it[1]] ? (CHECKED[it[1]]() ? '✓ ' : '   ') : ''}${shortcutLabel(it[0])}${it[2] ? `<span class="sc">${shortcutLabel(it[2])}</span>` : ''}</div>`
+      : `<div class="it" data-act="${it[1]}">${CHECKED[it[1]] ? (CHECKED[it[1]]() ? '✓ ' : '   ') : ''}${shortcutLabel(l10n(it[0]))}${it[2] ? `<span class="sc">${shortcutLabel(it[2])}</span>` : ''}</div>`
   ).join('');
 }
 
@@ -86,6 +112,8 @@ function doAct(a) {
     case 'newDoc':     newDoc(); break;
     case 'openVarase': openVarasePop(); return;
     case 'save':       downloadJSON(); break;
+    case 'reload':     stopPlay(); if (state.preset) loadPreset(state.preset); break;
+    case 'exportPdf':  exportPDF(); break;
     case 'exportSvg':  exportSVG(); break;
     case 'exportMp3':  exportMP3(); break;
     case 'exportMidi': exportMIDI(); break;
@@ -102,6 +130,7 @@ function doAct(a) {
     case 'zreset':     setZoom(1); break;
     case 'theme':      toggleTheme(); break;
     case 'page':       document.getElementById('pageViewBtn').click(); break;
+    case 'gutter':     document.getElementById('gutterBtn').click(); break;
     // What a played note is worth. Set outright rather than cycled: with three
     // rules a toggle would have to be pressed twice to reach one of them, and
     // which two it sat between would depend on where you started.
@@ -115,7 +144,7 @@ function doAct(a) {
 
 export function openVarasePop() {
   const anchor = document.getElementById('bOpen');
-  const html = '<div class="ttl">Open Varase</div>' +
+  const html = `<div class="ttl">${l10n('Open Varase')}</div>` +
     Object.keys(TITLES).map(k => `<div class="it" data-pre="${k}">${TITLES[k]}</div>`).join('') +
     '<div class="hr"></div>' +
     '<div class="it" data-open="dng">Open .dng.json…</div>' +
@@ -137,7 +166,7 @@ export function openVarasePop() {
     el.addEventListener('click', () => {
       const kind = el.dataset.open;
       input.accept = kind === 'midi' ? '.mid,.midi'
-        : kind === 'xml' ? '.xml,.musicxml,.mxl'
+        : kind === 'xml' ? '.xml,.musicxml'
         : '.json,.dng.json';
       input.click();
       hide();
@@ -148,9 +177,11 @@ export function openVarasePop() {
 function openZoomPicker() {
   const anchor = document.getElementById('zoomBtn');
   const opts = [50, 75, 100, 125, 150, 200];
-  show(opts.map(z =>
-    `<div class="it ${Math.round(state.zoom * 100) === z ? 'sel' : ''}" data-z="${z}">${z}%</div>`
-  ).join(''), anchor, 'left');
+  show(`<div class="it ${fitting ? 'sel' : ''}" data-fit>${l10n('Fit width')}</div><div class="hr"></div>`
+    + opts.map(z =>
+      `<div class="it ${!fitting && Math.round(state.zoom * 100) === z ? 'sel' : ''}" data-z="${z}">${z}%</div>`
+    ).join(''), anchor, 'left');
+  pop().querySelector('[data-fit]').addEventListener('click', () => { fitPage(); hide(); });
   pop().querySelectorAll('[data-z]').forEach(el =>
     el.addEventListener('click', () => { setZoom(+el.dataset.z / 100); hide(); }),
   );
@@ -181,6 +212,7 @@ export function wireMenus() {
 
   // zoom + tala buttons in the toolbar
   document.getElementById('zoomBtn').addEventListener('click', openZoomPicker);
+  window.addEventListener('resize', () => { if (fitting) fitPage(); });
   document.getElementById('timeSigBtn').addEventListener('click', openTimeSigPicker);
   // The header's account button opens the real account dialog. What used to be
   // here was a popover with a hardcoded "Guest User / Offline Mode" and a Sign
@@ -193,4 +225,4 @@ export function wireMenus() {
   document.addEventListener('score:rendered', updateZoomContainerSize);
 }
 
-export { updateTalaLine, setZoom };
+export { updateTalaLine, setZoom, fitPage };

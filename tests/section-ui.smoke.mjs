@@ -96,7 +96,6 @@ const drawn = await evaluate(`(() => {
     editable: roll.querySelectorAll('.roll-blk.edit').length,
     rests: roll.querySelectorAll('.roll-rest').length,
     beats: roll.querySelectorAll('.roll-tick').length,
-    rows: document.querySelectorAll('#inspectBody .stime-row').length,
     trackH: roll.querySelector('.roll-track').getBoundingClientRect().height,
     keysH: roll.querySelector('.roll-keys').getBoundingClientRect().height,
     tops: [...roll.querySelectorAll('.roll-blk')].map(b => Math.round(b.getBoundingClientRect().top)),
@@ -111,7 +110,6 @@ is(drawn.letters, 'NDPM-GRSNDPM-GRSNDPM-GRS', 'and reads as the ladder three tim
 is(drawn.blocks, 4, 'four notes, four blocks');
 is(drawn.editable, 4, 'every one of them can be dragged');
 is(drawn.beats, 4, 'the metre is ruled across it');
-is(drawn.rows, 4, 'the list under it still names them');
 is(Math.round(drawn.trackH), Math.round(drawn.keysH), 'the keys line up with the lanes');
 // Sa Ri Ga Ma climbs, so each block sits ABOVE the one before it. This is the
 // whole point of the roll: the shape of the phrase is visible.
@@ -224,6 +222,115 @@ await wait(220);
 is(await evaluate(`(async () => JSON.stringify(
   (await import('./state.js')).state.notes.map(n => n.type + (n.svaraIndex ?? ''))))()`),
   beforeWall, 'dragging into the note in front of it changes nothing');
+
+// ---- the control row and the keys ------------------------------------------
+// A click SELECTS. The row under the roll carries only what a drag cannot say
+// (length as a symbol, chukki, notehead, delete); pitch and position are the
+// arrow keys while the roll has the focus. Driven on a fresh score so nothing
+// above decides what is selected.
+
+await evaluate(`(async () => {
+  const { state } = await import('./state.js');
+  const { render } = await import('./notation.js');
+  state.notes = [0, 2, 4].map(svaraIndex => ({
+    type: 'note', svaraIndex, oct: 0, head: '', sym: 'bindu', dur: 1,
+  }));
+  state.bars = []; state.breaks = []; state.hist = []; state.future = [];
+  render();
+})()`);
+await wait(150);
+await evaluate(`document.querySelector('#score .section-hit')
+  .dispatchEvent(new MouseEvent('click', { bubbles: true }))`);
+await wait(150);
+
+ok(await evaluate(`document.querySelector('#inspectBody .sed').classList.contains('empty')`),
+  'with nothing selected the control row is the how-to');
+
+const ga = await evaluate(`(() => {
+  const r = document.querySelectorAll('#inspectBody .roll-blk')[1].getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+})()`);
+await mouse('mousePressed', ga.x, ga.y);
+await mouse('mouseReleased', ga.x, ga.y);
+await wait(150);
+is(await evaluate(`document.querySelectorAll('#inspectBody .roll-blk.sel').length`), 1,
+  'a click selects the note');
+is(await evaluate(`document.querySelector('#inspectBody .sec-lcd b')?.textContent.trim()`), '○ Ga',
+  '...and the readout names it');
+is(await evaluate(`document.querySelectorAll('#inspectBody .roll-key.sel').length`), 1,
+  '...and its lane is lit in the key column');
+is(await evaluate(`document.activeElement?.dataset.act`), 'roll',
+  '...and the roll has the focus, so the arrow keys are its');
+
+const VK = { ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39, Delete: 46 };
+const key = async (k, modifiers = 0) => {
+  const ev = { key: k, code: k, windowsVirtualKeyCode: VK[k], modifiers };
+  await command('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...ev });
+  await command('Input.dispatchKeyEvent', { type: 'keyUp', ...ev });
+  await wait(200);
+};
+const press = async act => {
+  const b = await evaluate(`(() => {
+    const el = document.querySelector('#inspectBody .sed [data-act="${act}"]');
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  })()`);
+  await mouse('mousePressed', b.x, b.y);
+  await mouse('mouseReleased', b.x, b.y);
+  await wait(200);
+};
+const second = () => evaluate(`(async () => {
+  const { state } = await import('./state.js');
+  const i = state.notes.findIndex(n => n.type === 'note' && n.svaraIndex !== 0);
+  return { ...state.notes[i], before: state.notes.slice(0, i).reduce((u, n) => u + n.dur, 0) };
+})()`);
+const sequence = () => evaluate(`(async () => (await import('./state.js')).state.notes
+  .map(n => n.type + (n.svaraIndex ?? '') + ':' + n.dur).join(' '))()`);
+
+await key('ArrowUp', 8);                                        // 8 = shift
+is((await second()).oct, 1, 'shift-up wrote taara');
+await key('ArrowUp');
+is((await second()).svaraIndex, 3, 'up stepped OVER the dead lane, Ga to Ma');
+const walled = await sequence();
+await key('ArrowLeft');
+is(await sequence(), walled, 'there is no silence in front of it, so left changes nothing');
+await key('ArrowRight');
+is((await second()).before, 1.125, 'right put a danta of silence in front of it');
+is(await evaluate(`document.querySelectorAll('#inspectBody .roll-blk.sel').length`), 1,
+  'and it is still the selected note, though its index moved');
+is(await evaluate(`document.activeElement?.dataset.act`), 'roll',
+  '...with the focus still on the roll');
+
+await press('var');
+is((await second()).head, 'f', 'the notehead button wrote the raised Ma');
+await evaluate(`(() => {
+  const el = document.querySelector('#inspectBody .sed-len');
+  el.value = '2';
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+})()`);
+await wait(200);
+is((await second()).dur, 2, 'the length menu made it a Guru');
+await press('dot');
+is((await second()).dur, 3, '...and the chukki half as long again');
+
+// Delete leaves the silence the note was taking up, so nothing after it moves.
+const total = () => evaluate(`(async () => (await import('./state.js')).state.notes
+  .reduce((u, n) => u + n.dur, 0))()`);
+const lengthBefore = await total();
+await press('del');
+is(await evaluate(`(async () => (await import('./state.js')).state.notes
+  .filter(n => n.type === 'note').length)()`), 2, 'Delete took the note out');
+is(await total(), lengthBefore, '...and left its length behind as silence');
+
+// ---- stepping between divisions -------------------------------------------
+is(await evaluate(`document.querySelector('#inspectBody [data-act="prev"]').disabled`), true,
+  'the first box has nothing before it');
+await evaluate(`document.querySelector('#inspectBody [data-act="next"]').click()`);
+await wait(150);
+is(await evaluate(`document.querySelector('#inspectBody .ihead .big').textContent`), 'Box 2',
+  'the next button opened the next box');
+is(await evaluate(`document.querySelectorAll('#score .section-hit.sel').length`), 1,
+  '...and the staff marks that one');
 
 socket.close();
 console.log(`section-ui: ${checks} checks passed`);

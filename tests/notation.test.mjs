@@ -260,6 +260,21 @@ const written = rows => rows.flatMap(r => r.boxes).filter(b => b.entries.length)
   assert.ok(named > noteY(0, -1) + GOLI_R * NOTE_SCALE, 'and the letter clears the goli');
 }
 
+// The letter is the PIANO KEY's — one per semitone, S r R g G m M P d D n N —
+// so the pair on one rung is told apart by its letter as well as its head.
+{
+  const named = heads => {
+    const notes = heads.map(([svaraIndex, head]) => ({ ...note(svaraIndex, 'bindu'), head }));
+    state.showNames = true;
+    const svg = rowSVG(scoreRows(notes, [])[0]);
+    state.showNames = false;
+    return [...svg.matchAll(/<text[^>]*>([A-Za-z])<\/text>/g)].map(m => m[1]).join('');
+  };
+  assert.equal(named([[1, 'f'], [1, 'o'], [3, 'o'], [3, 'f']]), 'rRmM',
+    'filled Ri is r, hollow Ri is R; shuddha Ma is m, prati Ma is M');
+  assert.equal(named([[0, 'o'], [2, 'f'], [5, 'f'], [6, 'f']]), 'Sgdn');
+}
+
 // stemMetrics() is what the note inspector quotes, so it has to describe the
 // stem noteGlyph() actually draws — foot at the head's edge, tip at the anchor.
 // Madhya is the only sthayi where the length is the fixed STEM_LEN.

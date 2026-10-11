@@ -90,7 +90,12 @@ export function clearMetronomeAnchor() {
 // be able to start and stop it. See midi-clock.js.
 const sender = newClockSender();
 
-const audio = audioCtx;
+// Where the voices are built: the live context, straight to the speakers —
+// except for the length of one renderClicks() call, which points every voice
+// below at an OFFLINE context so the MP3 gets the very clicks the editor plays
+// rather than a second set written to resemble them.
+let offline = null;
+const audio = () => offline || audioCtx();
 
 // One beat, in seconds — the same guarded answer the transport schedules by,
 // so the click and the note cannot be laid on two different tempi.
@@ -139,6 +144,7 @@ const ACCENT_PITCH = 1.22;
 const pending = new Set();
 
 function track(node) {
+  if (offline) return node;      // a render has no transport to stop
   pending.add(node);
   node.addEventListener?.('ended', () => pending.delete(node), { once: true });
   return node;
@@ -189,12 +195,40 @@ function hit(freq, { q = 6, peak = 0.4, decay = 0.04, at = null } = {}) {
   track(src);
 }
 
+// A struck bell: a fundamental and the two inharmonic partials that make it a
+// bell and not a beep, each dying sooner than the one below it.
+function bell(freq, at, peak) {
+  tone(freq, { peak, decay: 0.42, at });
+  tone(freq * 2.76, { peak: peak * 0.3, decay: 0.18, at });
+  tone(freq * 5.4, { peak: peak * 0.12, decay: 0.07, at });
+}
+
 // ---- sound presets ----
 // Each takes the accent flag — `g` scales loudness, `f` pitch — and `at`, the
 // audio-clock time the click is due. Every voice a preset builds must be given
-// `at`, or that layer of the click drifts away from the rest of it.
+// `at`, or that layer of the click drifts away from the rest of it. `down` is
+// the first beat of the cycle, for the voices that mark the bar differently
+// from a group start inside it.
+//
+// state.metroSound is an INDEX into this table, so the first entry is what a
+// new session opens on.
 
 const SOUNDS = [
+  {
+    id: 'keyboard', name: 'Keyboard',
+    // What a digital piano's own metronome does: a bell on the first beat of
+    // the bar and a dry click on the rest. A group start inside the bar gets
+    // the click, accented — a bell on each would make 4+2 sound like two bars.
+    play: (g, f, at, down) => {
+      if (down) {
+        bell(2093, at, 0.26);
+        hit(3000, { q: 2, peak: 0.14, decay: 0.01, at });
+        return;
+      }
+      hit(3000 * f, { q: 2, peak: 0.16 * g, decay: 0.01, at });
+      tone(1570 * f, { type: 'triangle', peak: 0.2 * g, decay: 0.03, at });
+    },
+  },
   {
     id: 'click', name: 'Click',
     // Triangle rather than square — same clarity without the buzzy edge.
@@ -243,6 +277,44 @@ const SOUNDS = [
       tone(1800 * f, { type: 'triangle', peak: 0.10 * g, decay: 0.025, at });
     },
   },
+  {
+    id: 'mechanical', name: 'Mechanical',
+    // A wind-up pendulum: a wooden tock, and the small bell such a metronome
+    // rings on the bar.
+    play: (g, f, at, down) => {
+      hit(900 * f, { q: 4, peak: 0.4 * g, decay: 0.022, at });
+      tone(820 * f, { type: 'triangle', peak: 0.16 * g, decay: 0.03, sweepTo: 600 * f, at });
+      hit(2600, { q: 3, peak: 0.08 * g, decay: 0.008, at });
+      if (down) bell(2637, at, 0.14);
+    },
+  },
+  {
+    id: 'digital', name: 'Digital',
+    // A quartz practice metronome: one short square beep, an octave up on the bar.
+    play: (g, f, at, down) => tone(down ? 1760 : 880 * f,
+      { type: 'square', peak: 0.07 * g, decay: 0.05, at }),
+  },
+  {
+    id: 'clave', name: 'Clave',
+    play: (g, f, at) => {
+      tone(2400 * f, { peak: 0.2 * g, decay: 0.045, at });
+      hit(2400 * f, { q: 16, peak: 0.3 * g, decay: 0.012, at });
+    },
+  },
+  {
+    id: 'sticks', name: 'Sticks',
+    // A drummer's count-in.
+    play: (g, f, at) => {
+      hit(1800 * f, { q: 3, peak: 0.5 * g, decay: 0.02, at });
+      hit(5200, { q: 1.5, peak: 0.08 * g, decay: 0.008, at });
+      tone(1650 * f, { type: 'triangle', peak: 0.07 * g, decay: 0.025, sweepTo: 1300 * f, at });
+    },
+  },
+  {
+    id: 'hihat', name: 'Hi-hat',
+    // Closed on the beat, a little open on the accent.
+    play: (g, f, at) => hit(8500, { q: 0.8, peak: 0.2 * g, decay: f > 1 ? 0.09 : 0.03, at }),
+  },
 ];
 
 function currentSound() {
@@ -250,8 +322,8 @@ function currentSound() {
   return SOUNDS[i];
 }
 
-function click(accent, at = null) {
-  currentSound().play(accent ? ACCENT_GAIN : 1, accent ? ACCENT_PITCH : 1, at);
+function click(accent, at = null, down = accent) {
+  currentSound().play(accent ? ACCENT_GAIN : 1, accent ? ACCENT_PITCH : 1, at, down);
 }
 
 // Beat `beat` of the score, due at audio-clock time `at`. THE one place a beat
@@ -259,7 +331,22 @@ function click(accent, at = null) {
 // differently — whether a beat is accented is a question about the metre, and
 // it gets the same answer whoever is asking.
 export function clickForBeat(beat, at) {
-  click(isGroupStart(((beat % beatsPerCycle()) + beatsPerCycle()) % beatsPerCycle()), at);
+  const n = beatsPerCycle();
+  const pos = ((beat % n) + n) % n;
+  click(isGroupStart(pos), at, pos === 0);
+}
+
+// The count for an OFFLINE render — MP3 export. Beat k at k * `beat` seconds
+// for as long as there is music, which is the grid startPlay() runs: beat 0 on
+// the first note, and no ticking on over the silence after the last one.
+// Through clickForBeat(), so the file accents exactly as the editor does.
+export function renderClicks(ctx, beat, seconds) {
+  offline = ctx;
+  try {
+    for (let k = 0; k * beat < seconds - 1e-6; k += 1) clickForBeat(k, k * beat);
+  } finally {
+    offline = null;
+  }
 }
 
 // One beat, sounded and counted. TWO things happen on a beat and they belong

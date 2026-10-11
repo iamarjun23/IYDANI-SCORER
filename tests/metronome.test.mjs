@@ -118,7 +118,7 @@ const hushed = ['error', 'info', 'warn'].map(k => { const f = console[k]; consol
 const { state } = await import('../src/renderer/state.js');
 const { startPlay, stopPlay } = await import('../src/renderer/playback.js');
 const {
-  beatsPerCycle, startMetronome, stopMetronome,
+  beatsPerCycle, startMetronome, stopMetronome, renderClicks,
 } = await import('../src/renderer/metronome.js');
 const { TALAS } = await import('../src/renderer/config.js');
 hushed.forEach(([k, f]) => { console[k] = f; });
@@ -131,7 +131,7 @@ function play({ bpm = 72, tala = 'chatusra', beats = 16, metroOn = true } = {}) 
   state.bpm = bpm;
   state.tala = tala;
   state.metroOn = metroOn;
-  state.metroSound = 0;              // 'click': a noise hit plus a pitched tone
+  state.metroSound = 1;              // 'click': a noise hit plus a pitched tone
   state.notes = Array.from({ length: beats }, () => ({
     type: 'note', svaraIndex: 0, oct: 0, head: 'o', sym: 'bindu', dur: 1,
   }));
@@ -286,7 +286,7 @@ function solo({ tala = 'chatusra', bpm = 120, seconds = 6, changeTo = null } = {
   state.tala = tala;
   state.playing = false;
   state.metroOn = false;
-  state.metroSound = 0;
+  state.metroSound = 1;
 
   started = [];
   if (ctx) ctx.currentTime = 0;
@@ -383,6 +383,33 @@ checks += 2;
   is(take(solo({ tala: key, seconds: 8 }), 12).pattern,
     'X.....X.....', '6/4 is not ticking six beats to the cycle');
   resetTalas();
+}
+
+// ---------- the MP3 gets the same count ----------
+//
+// renderClicks() builds the editor's own voices on the context it is HANDED,
+// on the transport's grid: beat k at k beats, nothing past the music, and
+// nothing leaking onto the live context.
+{
+  state.tala = 'rupaka';
+  state.metroSound = 1;
+  const live = ctx;
+  const file = new FakeCtx();
+  ctx = live;
+  started = [];
+  renderClicks(file, 0.5, 6);
+  const at = [...new Set(started.map(v => v.at))].sort((a, b) => a - b);
+  assert.deepEqual(at, Array.from({ length: 12 }, (_, k) => k * 0.5),
+    'the exported count is not on the beat grid');
+  assert.ok(started.every(v => v.ctx === file), 'an exported click was built on the live context');
+  const loud = [...new Set(started.filter(v => v.freq > 1251).map(v => v.at / 0.5))];
+  assert.deepEqual(loud.sort((a, b) => a - b), [0, 4, 6, 10], 'the exported count accents the wrong beats');
+  started = [];
+  startMetronome();
+  stopMetronome();
+  assert.ok(started.length && started.every(v => v.ctx === live),
+    'the metronome did not go back to the live context after a render');
+  checks += 4;
 }
 
 console.log(`metronome: ${checks} checks passed`);

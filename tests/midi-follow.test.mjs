@@ -183,7 +183,7 @@ const { PPQ, TAP_TIMEOUT_MS: TAP_TIMEOUT } = await import('../src/renderer/midi-
 hushed.forEach(([k, f]) => { console[k] = f; });
 
 await midi.initMidiInput();
-state.metroSound = 0;
+state.metroSound = 1;
 state.midiSync = 'follow';
 state.midiSyncOffset = 0;
 

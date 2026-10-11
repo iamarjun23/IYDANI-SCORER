@@ -21,10 +21,9 @@ import { setNoteDuration } from './score.js';
 // single glyph. What is shared is the vocabulary, and it travels one way only:
 // inspector -> section, never back.
 import {
-  beatsLabel, SYM_LABEL, rollModel, sectionHTML, wireSection, sectionBusy,
+  beatsLabel, SYM_LABEL, STHAYI, rollModel, sectionHTML, wireSection, sectionBusy,
+  selectNote,
 } from './section.js';
-
-const STHAYI = { '-1': 'mandra', 0: 'madhya', 1: 'taara' };
 
 function ledgersOf(y) {
   if (y > BOTY) return Math.floor((y - BOTY) / STEP);
@@ -163,9 +162,25 @@ export function installInspector() {
     selAt = Number(at);
     const cap = boxUnits();
     const model = rollModel(box, rows, cap);
-    panel.innerHTML = sectionHTML(box, model, cap);
-    wireSection(panel, model, Number(box.at), cap);
+    // A rebuild replaces the button that was just pressed. The focus goes back
+    // to its successor, or a keyboard user pressing the same step twice would
+    // have to tab back to it after every press.
+    const act = panel.contains(document.activeElement)
+      ? document.activeElement.dataset.act : null;
+    // The division on either side, for the header's ‹ › — by its place in the
+    // flow, and only if there is something in it to open.
+    const boxes = rows.flatMap(r => r.boxes);
+    const k = boxes.indexOf(box);
+    const atOf = b => (b && b.entries.length ? Number(b.at) : null);
+    panel.innerHTML = sectionHTML(box, model, cap,
+      { prev: atOf(boxes[k - 1]), next: atOf(boxes[k + 1]) });
+    wireSection(panel, model, Number(box.at), cap, () => openSection(selAt),
+      to => { clear(); openSection(to); mark(to); });
+    if (act) panel.querySelector('[data-act="' + act + '"]')?.focus();
   };
+
+  const mark = at => [...document.querySelectorAll('#score .section-hit')]
+    .find(s => Number(s.dataset.boxAt) === at)?.classList.add('sel');
 
   document.getElementById('score').addEventListener('click', e => {
     const g = e.target.closest('.glyph');
@@ -175,6 +190,8 @@ export function installInspector() {
       const hit = [...document.querySelectorAll('#score .section-hit')]
         .find(s => Number(s.dataset.boxAt) <= at && at < Number(s.dataset.boxAt) + boxUnits());
       if (hit) {
+        // The note that was clicked is the one the editor opens on.
+        selectNote(g.dataset.src === '' ? null : Number(g.dataset.src));
         hit.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         return;
       }
@@ -234,19 +251,17 @@ export function installInspector() {
   // — an edit made in this panel re-renders, and blanking the thing being
   // dragged the moment it moves makes it unusable — but not while a field in
   // it has the focus: playback re-renders on every beat, and replacing the
-  // markup under someone's fingers would take the caret out of the input. A
+  // markup under someone's fingers would take the caret out of the input. (A
+  // FIELD, not anything focusable: the editor's buttons are focused by the
+  // click that presses them, and must not freeze the panel they just edited.) A
   // drag on the roll is the same fact one gesture further on: nothing there
   // commits until the pointer is released, so rebuilding the block under a
   // moving finger would drop the whole move.
   document.addEventListener('score:rendered', () => {
     if (selAt == null) { panel.innerHTML = EMPTY; return; }
-    if (panel.contains(document.activeElement) || sectionBusy()) return;
+    if (panel.querySelector('input:focus, select:focus') || sectionBusy()) return;
     const at = selAt;
     openSection(at);
-    if (selAt != null) {
-      const hit = [...document.querySelectorAll('#score .section-hit')]
-        .find(s => Number(s.dataset.boxAt) === at);
-      if (hit) hit.classList.add('sel');
-    }
+    if (selAt != null) mark(at);
   });
 }

@@ -12,7 +12,7 @@
 import {
   SOUND, REST_MAP, DOT_MULT,
   GOLI_R, NOTE_SCALE, STEM_LEN, STEP, TOPY, GTOP, MAGY, BOTY, STAFF,
-  SVARA_LETTER, REST_MID, REST_SPIKE_H,
+  TONE_LETTER, semiOf, REST_MID, REST_SPIKE_H,
 } from './config.js';
 import { state } from './state.js';
 import {
@@ -86,10 +86,9 @@ function row(art, name, note) {
 // ledgers, stemPointsDown/stemTip aim the stems — so it is a picture of what
 // this build actually writes, not an illustration of what it ought to.
 // The seven naturals, named the way the Legend toggle names them on the staff —
-// SVARA_LETTER, one letter per ladder position — so the chart and the sheet
-// cannot letter the same goli differently. See svaraName() in notation.js for
-// why this is not TONE_LETTER.
-const nameOf = svi => SVARA_LETTER[svi];
+// the piano key's letter, TONE_LETTER through semiOf() — so the chart and the
+// sheet cannot letter the same goli differently. See svaraName() in notation.js.
+const nameOf = svi => TONE_LETTER[semiOf(svi, 'o') % 12];
 
 // One entry per goli: mandra S..N, madhya S..N, taara S..N, then the Sá that
 // closes the top octave — 22 in all, the same run the drawing shows.

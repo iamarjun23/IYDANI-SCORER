@@ -116,4 +116,19 @@ assert.ok(calls.some(c => c.name === 'addPage'), 'a long score breaks onto a sec
 const footers = calls.filter(c => c.name === 'roundedRect');
 assert.ok(footers.length >= 2, 'and every page gets its own pill');
 
+// pageLayout() is the one break rule — the export above and the screen's Page
+// view both place rows by it — so it must keep every row above the pill and
+// count the pages the export actually made.
+const { pageLayout, scoreRows } = await import('../src/renderer/notation.js');
+const { PAGE_BOT_LIMIT, PAGE_NEXT_Y } = await import('../src/renderer/config.js');
+const at = pageLayout(scoreRows());
+assert.equal(at.at(-1).page + 1, footers.length, 'one page per pill');
+at.forEach((r, i) => {
+  assert.ok(r.y + r.h <= PAGE_BOT_LIMIT, `row ${i} runs into the page pill`);
+  if (i && r.page !== at[i - 1].page) {
+    assert.equal(r.page, at[i - 1].page + 1, 'pages are consecutive');
+    assert.equal(r.y, PAGE_NEXT_Y, 'a continuation page starts at the top padding');
+  }
+});
+
 console.log(`pdf export tests passed (${calls.length} jsPDF calls checked)`);

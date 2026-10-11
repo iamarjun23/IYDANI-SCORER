@@ -1,0 +1,5 @@
+#!/bin/sh
+# Every commit is its own version: bump the patch number and stage the result.
+# Skip once with `git commit --no-verify`.
+node tools/version.mjs --commit || exit 1
+git add package.json package-lock.json src/preload.js

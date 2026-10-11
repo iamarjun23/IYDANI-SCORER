@@ -20,32 +20,40 @@ function safeName(s) {
   return (s || 'untitled').replace(/\s+/g, '_');
 }
 
-export function downloadJSON() {
+// The score as the .dng.json carries it. A lesson is exactly this, which is why
+// cowork.js reads it too: a lesson file IS a score file.
+export function scoreData() {
   // Save the expanded score so the rests padding a partly-filled box are in
   // the file. Repeat marks come back remapped onto the expanded indices, so
   // reopening lands them on the same notes.
   const score = expandScore();
-  download(
-    safeName(state.title) + '.dng.json',
-    'application/json',
-    JSON.stringify({
-      title: state.title,
-      tala:  state.tala,
-      // The metre travels with the score, definition and all, so a file
-      // written in a custom time signature opens correctly on a machine that
-      // has never seen it. The key alone would land on the fallback.
-      timeSig: talaForSave(),
-      scale: 'Mayamalavagowla',
-      bpm:   state.bpm,
-      saMidi: state.saMidi,
-      notes: score.notes,
-      bars:  score.bars,
-      // Layout, not music: the divisions the sheet is broken at.
-      breaks: state.breaks,
-      // The keyboard layout the score was written on.
-      keyBinds: binds(),
-    }, null, 2),
-  );
+  return {
+    title: state.title,
+    tala:  state.tala,
+    // The metre travels with the score, definition and all, so a file
+    // written in a custom time signature opens correctly on a machine that
+    // has never seen it. The key alone would land on the fallback.
+    timeSig: talaForSave(),
+    scale: 'Mayamalavagowla',
+    bpm:   state.bpm,
+    saMidi: state.saMidi,
+    notes: score.notes,
+    bars:  score.bars,
+    // Layout, not music: the divisions the sheet is broken at.
+    breaks: state.breaks,
+    // Which tones the legend has switched on, per sthayi.
+    tones: state.tones,
+    // The keyboard layout the score was written on.
+    keyBinds: binds(),
+  };
+}
+
+export function saveJSON(data) {
+  download(safeName(data.title) + '.dng.json', 'application/json', JSON.stringify(data, null, 2));
+}
+
+export function downloadJSON() {
+  saveJSON(scoreData());
 }
 
 export function exportSVG() {

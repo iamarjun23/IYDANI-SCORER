@@ -15,8 +15,9 @@
 import { state } from './state.js';
 import {
   SAMPLE_MIDI, SAMPLE_URL, SAMPLE_GAIN, SAMPLE_DETUNE, RING_SECONDS, semiOf,
-  SAMPLE_LOOP_AT, SAMPLE_LOOP_MIN, SAMPLE_SUSTAIN_MAX,
-  SUSTAIN_FLOOR, SUSTAIN_DECAY_T, SUSTAIN_TONE_T,
+  SAMPLE_LOOP_AT, SAMPLE_LOOP_MIN, SAMPLE_SUSTAIN_MAX, SAMPLE_SUSTAIN_LOOP,
+  HELD_FADE_AT, HELD_FADE_T,
+  SUSTAIN_FLOOR, SUSTAIN_DECAY_T, SUSTAIN_DECAY_MIN_T, SUSTAIN_TONE_T,
   SUSTAIN_TONE_FROM_HZ, SUSTAIN_TONE_TO_HZ,
   SUSTAIN_TONE_FROM_RATIO, SUSTAIN_TONE_TO_RATIO,
 } from './config.js';
@@ -193,11 +194,13 @@ function decodeSamples() {
         onsets.set(midi, onsetOffset(src, decoded.sampleRate));
         // The loop is cut out of a duplicate, not out of the recording — see
         // loopBuffers. The copy is only kept if a loop was actually found.
-        const copy = ctx.createBuffer(1, src.length, decoded.sampleRate);
-        const data = copy.getChannelData(0);
-        data.set(src);
-        const loop = buildSustainLoop(data, decoded.sampleRate, freqOfMidi(midi));
-        if (loop) { loops.set(midi, loop); loopBuffers.set(midi, copy); }
+        if (SAMPLE_SUSTAIN_LOOP) {
+          const copy = ctx.createBuffer(1, src.length, decoded.sampleRate);
+          const data = copy.getChannelData(0);
+          data.set(src);
+          const loop = buildSustainLoop(data, decoded.sampleRate, freqOfMidi(midi));
+          if (loop) { loops.set(midi, loop); loopBuffers.set(midi, copy); }
+        }
       } catch (err) {
         console.error(`[audio] sample n${midi} failed to decode:`, err.message);
       }
@@ -260,14 +263,14 @@ const RELEASE_FLOOR = 0.0001;
 // struck voice and the offline MP3 render — because a file that shaped its
 // notes differently from the editor would not be the same performance.
 
-// The level a voice has reached `elapsed` seconds after its attack finished.
+// The level a voice has reached `elapsed` seconds into its decay.
 // Written out rather than read back off the AudioParam because the release has
 // to be scheduled AHEAD, at a time that has not happened yet: a ramp booked
 // from a stale value steps the note back up to full before falling, which is a
 // bump on the end of every note.
-export function sustainLevelAt(level, elapsed) {
+export function sustainLevelAt(level, elapsed, decayT = SUSTAIN_DECAY_T) {
   const t = Math.max(0, Number(elapsed) || 0);
-  const v = level * (SUSTAIN_FLOOR + (1 - SUSTAIN_FLOOR) * Math.exp(-t / SUSTAIN_DECAY_T));
+  const v = level * (SUSTAIN_FLOOR + (1 - SUSTAIN_FLOOR) * Math.exp(-t / decayT));
   // Never below the value the release ramps TO. The decay now runs all the way
   // to silence, so a note released after a very long hold reaches a level under
   // RELEASE_FLOOR — and an exponential ramp whose start is below its target
@@ -287,11 +290,42 @@ export function sustainTone(freq) {
   };
 }
 
-// Attack, then the slow decay. `t` is when the voice starts.
-function shapeGain(param, level, t) {
-  param.setValueAtTime(0, t);
-  param.linearRampToValueAtTime(level, t + ATTACK);
-  param.setTargetAtTime(level * SUSTAIN_FLOOR, t + ATTACK, SUSTAIN_DECAY_T);
+// The decay's time constant for a note whose sustained part — written end
+// minus the point the loop takes over — is `span` seconds. See
+// SUSTAIN_DECAY_MIN_T: a fixed constant held every one-beat note flat.
+export function sustainDecayT(span) {
+  return Math.min(SUSTAIN_DECAY_T, Math.max(SUSTAIN_DECAY_MIN_T, Number(span) || 0));
+}
+
+// The whole envelope of one played note of written length `d`: attack, the
+// decay, the release. Returns when it has rung out. `loopAt` is how long after
+// the voice starts the loop takes over (null: no loop). ONE function for the
+// Play button and the MP3 render, so a note cannot age differently in the file.
+//
+// The decay starts where the recording stops falling by itself, and before
+// that the recording is left alone. Looped, that is the loop point. Unlooped
+// it is HELD_FADE_AT, with a held key's own fade — the recording sits on a
+// residue instead of dying, and a played note must not end on that buzz any
+// more than a held key may.
+export function shapeNote(param, level, t, d, loopAt = null) {
+  attackOnly(param, level, t);
+  const looped = loopAt != null;
+  const hold = t + Math.max(d, ATTACK);
+  const from = t + Math.max(looped ? loopAt : HELD_FADE_AT, ATTACK);
+  let end = level;
+  // Only if the note lasts that long: a decay booked past `hold` would land in
+  // the middle of the release ramp.
+  if (from < hold) {
+    const decayT = looped ? sustainDecayT(hold - from) : HELD_FADE_T;
+    param.setTargetAtTime(level * SUSTAIN_FLOOR, from, decayT);
+    end = sustainLevelAt(level, hold - from, decayT);
+  }
+  // Pin the level the decay has ACTUALLY reached, never the struck level —
+  // that would step the note back up to full at the moment it is let go.
+  param.setValueAtTime(end, hold);
+  const done = hold + ringLength(d);
+  param.exponentialRampToValueAtTime(RELEASE_FLOOR, done);
+  return done;
 }
 
 // Attack and nothing else, for a voice whose recording supplies its own decay.
@@ -375,21 +409,26 @@ function sampleVoice(f, when = null, level = SAMPLE_GAIN, sustain = true) {
 
   const g = a.createGain();
   const t = Math.max(when == null ? a.currentTime : when, a.currentTime);
-  // The slow decay and the darkening exist to keep a LOOPED voice from sitting
-  // still — a frozen tone is heard as a ring however quiet it is. An unlooped
-  // voice is already dying away on its own, in the instrument's own way, so
-  // laying a second decay over it would only take the note twice.
-  if (loop) shapeGain(g.gain, level, t);
-  else attackOnly(g.gain, level, t);
+  // A sustained voice gets its whole envelope from strike(), which knows how
+  // long the note is. A held key's recording dies on its own, then stops
+  // falling and sits on a residue — see HELD_FADE_AT.
+  if (!sustain) {
+    attackOnly(g.gain, level, t);
+    g.gain.setTargetAtTime(0, t + HELD_FADE_AT, HELD_FADE_T);
+  }
   // The darkening only makes sense over a LOOPED voice: a sample with no loop
   // runs out on its own and is already losing its top as it decays, so filtering
   // it would take away tone the recording was going to lose anyway.
   node.connect(loop ? shapeTone(a, f, t).connect(g) : g).connect(masterBus(a));
   // Start AT the attack, not at sample zero — see the note at the top.
-  node.start(t, onsets.get(src) || 0);
+  const onset = onsets.get(src) || 0;
+  node.start(t, onset);
+  // When, after its start, this voice stops being the recording and becomes
+  // the loop — in real time, so the shift is divided back out.
+  const loopAt = loop ? (loop.start - onset) / node.playbackRate.value : null;
   // `level` rides on the voice so strike() holds it at the level it was
   // actually started at, rather than snapping every voice back to SAMPLE_GAIN.
-  return { node, g, at: t, level, looped: !!loop, sampled: true, stopped: false };
+  return { node, g, at: t, level, loopAt, looped: !!loop, sampled: true, stopped: false };
 }
 
 // Which of the two recordings a voice plays. A looped voice must take the
@@ -548,20 +587,10 @@ export function pluckAt(f, d, when = null) {
   return null;
 }
 
+// Measured from the voice's OWN start, which for a scheduled note is in the
+// future.
 function strike(v, d) {
-  const rel = ringLength(d);
-  // Hold until the note's time is up, then release — measured from the voice's
-  // OWN start, which for a scheduled note is in the future. Never before the
-  // attack ramp has finished, or the two schedules fight and the note stutters.
-  const hold = v.at + Math.max(d, ATTACK);
-  const level = v.level ?? SAMPLE_GAIN;
-  // Pin the level the slow decay has ACTUALLY reached by then, rather than the
-  // struck level. Writing `level` here would step the note back up to full at
-  // the moment it is let go — a bump on the end of every note — because the
-  // decay has been running underneath since the attack finished.
-  v.g.gain.setValueAtTime(sustainLevelAt(level, hold - (v.at + ATTACK)), hold);
-  v.g.gain.exponentialRampToValueAtTime(RELEASE_FLOOR, hold + rel);
-  v.node.stop(hold + rel + 0.02);
+  v.node.stop(shapeNote(v.g.gain, v.level ?? SAMPLE_GAIN, v.at, d, v.loopAt) + 0.02);
 }
 
 // A held piano key uses a sustained voice rather than repeatedly inserting
@@ -626,7 +655,10 @@ export function stopSustain(voice) {
 // Render playback without using the speakers. MP3 export calls this with the
 // same expanded sequence used by the Play button, so repeats, rests, ties,
 // tempo and tonic all match what the user hears in the editor.
-export async function renderSequenceOffline(sequence, bpm) {
+// `clicks(context, beatSeconds, musicSeconds)` lays the metronome into the same
+// render — handed in rather than imported, because metronome.js imports this
+// module.
+export async function renderSequenceOffline(sequence, bpm, clicks = null) {
   await whenReady();
   if (!buffers.size) throw new Error('The piano samples could not be loaded.');
 
@@ -690,21 +722,18 @@ export async function renderSequenceOffline(sequence, bpm) {
     }
 
     const gain = offline.createGain();
-    const release = event.release;
-    const releaseAt = event.start + Math.max(event.soundSeconds, ATTACK);
     // The same envelope and the same darkening the live voice takes, for the
     // same reason the loop and the master bus are shared: the export is the
     // performance, so a note may not age differently in the file.
-    shapeGain(gain.gain, SAMPLE_GAIN, event.start);
-    gain.gain.setValueAtTime(
-      sustainLevelAt(SAMPLE_GAIN, releaseAt - (event.start + ATTACK)), releaseAt);
-    gain.gain.exponentialRampToValueAtTime(RELEASE_FLOOR, releaseAt + release);
+    const done = shapeNote(gain.gain, SAMPLE_GAIN, event.start, event.soundSeconds,
+      event.loop ? (event.loop.start - event.offset) / event.rate : null);
     const freq = freqOfMidi(event.wantedMidi);
     source.connect(event.loop ? shapeTone(offline, freq, event.start).connect(gain) : gain)
       .connect(trim);
     source.start(event.start, event.offset);
-    source.stop(Math.min(duration, releaseAt + release + 0.02));
+    source.stop(Math.min(duration, done + 0.02));
   }
 
+  if (clicks) clicks(offline, stepSeconds, cursor);
   return offline.startRendering();
 }

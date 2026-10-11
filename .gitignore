@@ -4,6 +4,8 @@
 
 # Git configuration
 !.gitignore
+!.github/
+!.github/**
 
 # Package and build configuration
 !package.json
@@ -65,6 +67,7 @@ latest.yml
 
 # Never commit documentation, reports, archives, or legacy/source references
 *.md
+!/README.md
 *.pdf
 *.zip
 *.7z

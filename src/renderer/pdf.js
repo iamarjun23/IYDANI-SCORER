@@ -14,17 +14,16 @@
 // because jsPDF has no DOM to lay it out with.
 
 import { state } from './state.js';
-import { rowSVG, scoreRows, rowExtent } from './notation.js';
+import { rowSVG, scoreRows, rowExtent, pageLayout } from './notation.js';
 import {
   VW,
   TOPY, MAGY, BOTY, toMM,
   TONE_LETTER, TONE_MARK,
-  PAGE_W_MM, PAGE_H_MM, SHEET_PAD_X, SHEET_PAD_TOP, SHEET_PAD_BOT,
-  EMBLEM_MM, HEAD_RULE_W, HEAD_GAP_BOT,
+  PAGE_W_MM, PAGE_H_MM, SHEET_PAD_X, SHEET_PAD_TOP,
+  EMBLEM_MM, HEAD_RULE_W, HEAD_H, META_Y,
   TONE_CELL_W, TONE_ROW_H, TONE_MK_H, TONE_BORDER, TONE_PT, TONE_BG, TONE_LINE,
   MK_O_R, MK_O_W, MK_F_R, MK_T_W, MK_T_H,
-  META_TOP, META_GAP, META_BOT, META_LINE, META_PT, META_VAL_GAP,
-  SCORE_PAD_Y, ROW_GAP_MM,
+  META_GAP, META_LINE, META_PT, META_VAL_GAP,
   PILL_BOTTOM, PILL_W_MM, PILL_H_MM, PILL_R_MM, PILL_PT,
   BRAND_RIGHT, BRAND_BOTTOM, BRAND_PT, BRAND_COLOR, SHEET_INK, rgb,
   GUTTER_NUM_X, GUTTER_MARK_X, GUTTER_NUM_SIZE, GUTTER_SQ,
@@ -36,9 +35,6 @@ import { beatsPerBox } from './timesig.js';
 // the 18 cm staff inside it 15 mm from each paper edge.
 const LEFT = SHEET_PAD_X;
 const RIGHT = PAGE_W_MM - SHEET_PAD_X;
-
-// Rows stop where the page pill starts, not at an invented margin.
-const BOT_LIMIT = PAGE_H_MM - Math.max(SHEET_PAD_BOT, PILL_BOTTOM + PILL_H_MM + 2);
 
 // mm of cap height for a given point size — enough to sit text on a centre line
 // the way a CSS line box does.
@@ -86,9 +82,13 @@ function drawTones(doc, x, y) {
   const w = TONE_CELL_W;
   doc.setDrawColor(...rgb(TONE_LINE));
   doc.setLineWidth(TONE_BORDER);
-  doc.setFillColor(...rgb(TONE_BG));
+  // The sthayi the sheet's legend is showing; a tone switched off there is a
+  // blank white cell, as on screen.
+  const on = state.tones[state.oct + 1];
   for (let i = 0; i < TONE_LETTER.length; i++) {
+    doc.setFillColor(...rgb(TONE_BG));
     doc.rect(x + i * w, y, w, TONE_ROW_H, 'FD');
+    if (!on[i]) doc.setFillColor(255, 255, 255);
     doc.rect(x + i * w, y + TONE_ROW_H, w, TONE_MK_H, 'FD');
   }
 
@@ -106,6 +106,7 @@ function drawTones(doc, x, y) {
   doc.setDrawColor(...rgb(SHEET_INK));
   doc.setFillColor(...rgb(SHEET_INK));
   TONE_MARK.forEach((m, i) => {
+    if (!on[i]) return;
     const cx = x + i * w + w / 2;
     if (m === 'o') {
       doc.setLineWidth(MK_O_W);
@@ -140,15 +141,14 @@ function metaPair(doc, lab, val, baseline, right) {
   doc.text(val, x + lw + META_VAL_GAP, baseline);
 }
 
-// Draws the head and returns the y the first row starts at.
+// Draws the head. The first row starts under it, at PAGE_FIRST_Y.
 async function drawHeader(svg2pdf, doc) {
   const top = SHEET_PAD_TOP;
   const tonesW = TONE_CELL_W * TONE_LETTER.length;
   const tonesH = TONE_ROW_H + TONE_MK_H;
   // The emblem's centre, the rule and the legend's midline all sit on one axis,
   // as .sheet-head's `align-items: center` puts them.
-  const headH = Math.max(EMBLEM_MM, tonesH);
-  const mid = top + headH / 2;
+  const mid = top + HEAD_H / 2;
 
   const em = emblemEl();
   if (em) await placeSVG(svg2pdf, doc, em, LEFT, mid - EMBLEM_MM / 2, EMBLEM_MM, EMBLEM_MM);
@@ -159,7 +159,7 @@ async function drawHeader(svg2pdf, doc) {
 
   drawTones(doc, RIGHT - tonesW, mid - tonesH / 2);
 
-  const y = top + headH + HEAD_GAP_BOT + META_TOP;
+  const y = META_Y;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(META_PT);
   doc.setTextColor(...rgb(SHEET_INK));
@@ -172,7 +172,6 @@ async function drawHeader(svg2pdf, doc) {
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(0);
 
-  return y + META_LINE * 2 + META_GAP + META_BOT + SCORE_PAD_Y;
 }
 
 // ---------- the sheet foot ----------
@@ -248,24 +247,16 @@ export async function exportPDF() {
   // exactly the sheet's content width — 18 cm of staff plus its bleed.
   const rowW = toMM(VW);
 
-  let y = await drawHeader(svg2pdf, doc);
+  await drawHeader(svg2pdf, doc);
 
+  // pageLayout() is the screen's Page view rule too, so the two break alike.
+  const at = pageLayout(rows);
   for (const [i, row] of rows.entries()) {
-    // Height is per-row: mandra/taara stems make a row taller than the madhya
-    // baseline, and the page break has to account for the row it is about to
-    // place rather than a fixed step.
-    const { height, yMin } = rowExtent(row);
-    const rowH = toMM(height);
-    if (y + rowH > BOT_LIMIT) {
-      doc.addPage();
-      // A new page carries no head — the sheet does not repeat one — so its
-      // rows start at the same padding the head starts at on page one.
-      y = SHEET_PAD_TOP + SCORE_PAD_Y;
-    }
-    drawGutter(doc, i + 1, y, yMin);
+    const { page, y, h: rowH } = at[i];
+    if (i && page !== at[i - 1].page) doc.addPage();
+    drawGutter(doc, i + 1, y, rowExtent(row).yMin);
     const svgEl = svgFromString(rowSVG(row, null, null, false));
     await placeSVG(svg2pdf, doc, svgEl, LEFT, y, rowW, rowH);
-    y += rowH + ROW_GAP_MM;
   }
 
   const total = doc.internal.getNumberOfPages();

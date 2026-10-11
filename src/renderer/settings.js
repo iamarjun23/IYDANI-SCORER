@@ -36,6 +36,10 @@ const DEFAULTS = {
   //
   //   { "<device name>": { low, high, velocity, sinkSet } }
   midiDevices: {},
+  // The interface language — see i18n.js. A preference, not score data.
+  lang: 'en',
+  // The sheet as A4 pages (true) or one continuous strip — see pageLayout().
+  pageView: true,
 };
 
 // A value is either one of a fixed list, or checked by a function when it has
@@ -49,6 +53,8 @@ const ALLOWED = {
   midiSync: ['off', 'follow'],
   midiSyncOffset: cleanOffset,
   midiDevices: cleanDevices,
+  lang: ['en', 'kn', 'hi', 'te', 'ta'],
+  pageView: [true, false],
 };
 
 const midiByte = n => (Number.isInteger(n) && n >= 0 && n <= 127 ? n : null);

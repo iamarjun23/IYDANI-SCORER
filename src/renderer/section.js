@@ -18,8 +18,9 @@
 // the staff — the notehead is what separates them, not the height. A chromatic
 // 36-lane roll would split them and would then be drawing a pitch relationship
 // the sheet contradicts, which is the one thing a second view of the same score
-// must never do. Shift-click is what pays the cost back: it flips the notehead
-// in place, the same distinction the ⇧ key makes when typing.
+// must never do. The editor's Notehead buttons are what pay the cost back: they
+// flip the notehead in place, the same distinction the ⇧ key makes when typing
+// (and shift-click on a block is still the shortcut for it).
 //
 // WHAT A DRAG MEANS. Three things move, and each ends in score.js:
 //
@@ -45,46 +46,95 @@
 // and a drag on it sets the note's WHOLE length, so what is off to the left has
 // to be added back or every tied note would be truncated by the act of looking
 // at it.
+//
+// THE ROLL IS THE PANEL. Laid out the way a DAW's piano roll is: one line of
+// readout, the roll, one row of controls. The editor that sat above the roll
+// was a button for every edit — svara, octave, move, six lengths, a typed
+// field — plus a list repeating the roll in words, and it was judged too much.
+// What is left under the roll is only what a drag cannot say: the length as a
+// SYMBOL, the chukki, the notehead, and delete. Pitch and position are the
+// drags, or the arrow keys once the roll has the focus (↑↓ svara, ⇧↑↓ sthayi,
+// ←→ a danta earlier or later, Del). They all end in the same score.js
+// functions, so a key and a drag cannot land by different rules. The roll is
+// first and the header is one unwrapping line, so selecting a note never moves
+// the roll out from under the pointer.
 
 import { state } from './state.js';
 import {
-  SCRIPTS, SVARA_LETTER, SVARA_RUNG, TIME_UNITS_PER_BEAT, REST_MAP,
-  MA_INDEX, isFilled, hasVariant,
+  SCRIPTS, SVARA_LETTER, SVARA_RUNG, TIME_UNITS_PER_BEAT,
+  MA_INDEX, SOUND, DOT_MULT, DOTTABLE, SVARA_TONES, TONE_LETTER,
+  isFilled, hasVariant,
 } from './config.js';
 import { isGroupStart } from './timesig.js';
 import {
-  setNoteDuration, setNoteHead, moveNote, nudgeRoom,
+  setNoteDuration, setNoteHead, setNotePitch, moveNote, nudgeNote, nudgeRoom,
+  removeNote,
 } from './score.js';
 
-// Durations are always a symbol value or a chukki of one, so the set is small
-// and closed — spell them rather than printing 0.375.
-const BEATS = {
-  6: '6', 4: '4', 3: '3', 2: '2', 1.5: '1½', 1: '1',
-  0.75: '¾', 0.5: '½', 0.375: '⅜', 0.25: '¼', 0.125: '⅛',
-};
-export const beatsLabel = d => BEATS[d] || String(d);
+// Every length is a whole number of dantas, so it is spelled as a fraction
+// rather than printed as 0.375.
+const EIGHTHS = ['', '⅛', '¼', '⅜', '½', '⅝', '¾', '⅞'];
+export function beatsLabel(d) {
+  const u = Number(d) * TIME_UNITS_PER_BEAT;
+  if (!(u > 0) || !Number.isInteger(u)) return String(d);
+  return `${Math.floor(u / 8) || ''}${EIGHTHS[u % 8]}`;
+}
+const beatsText = b => `${beatsLabel(b)} beat${b > 1 ? 's' : ''}`;
 
 export const SYM_LABEL = {
   Maguru: 'Maguru', guru: 'Guru', bindu: 'Bindu',
   vasu: 'Vasu', praya: 'Praya', danta: 'Danta',
 };
 
+export const STHAYI = { '-1': 'mandra', 0: 'madhya', 1: 'taara' };
+
 const OCT_MARK = { '-1': '▼', 0: '■', 1: '▲' };
 
 const unitsToBeats = u => u / TIME_UNITS_PER_BEAT;
 
-const partName = n => (n.type === 'rest'
-  ? 'rest'
-  : `${(SCRIPTS[state.lang] || SCRIPTS.en)[n.svaraIndex] || '?'}${n.oct ? OCT_MARK[n.oct] : ''}`);
+const svaraName = n => (SCRIPTS[state.lang] || SCRIPTS.en)[n.svaraIndex] || '?';
 
-const partSym = n => SYM_LABEL[n.type === 'rest' ? (REST_MAP[n.sym] || n.sym) : n.sym] || n.sym;
+// A note is named WITH its sthayi wherever it is named in words. On the roll
+// itself the band it sits in already says it, so a block carries the svara only.
+const partName = n => (n.type === 'rest'
+  ? 'Rest'
+  : `${svaraName(n)} · ${STHAYI[n.oct] || ''}`);
+
+// The sheet's own three noteheads, so a block is read the way its glyph is:
+// hollow natural, filled lowered, triangle M2.
+const headMark = p => (p.m2 ? '△' : p.filled ? '●' : '○');
+
+// Shortest to longest, the way a length control reads.
+const LENGTHS = ['danta', 'praya', 'vasu', 'bindu', 'guru', 'Maguru'];
+
+// Which symbol a length IS, chukki included — or null when it takes more than
+// one glyph to write (1⅛ beats), and no button should claim to be it.
+function symbolOf(units) {
+  for (const sym of LENGTHS) {
+    const u = SOUND[sym].dur * TIME_UNITS_PER_BEAT;
+    if (units === u) return { sym, dot: false };
+    if (DOTTABLE.includes(sym) && units === u * DOT_MULT) return { sym, dot: true };
+  }
+  return null;
+}
+
+// ---- which note is being worked on ----------------------------------------
+//
+// Held as the note OBJECT, not its index: a sideways move splices rests in
+// front of the note, so its index changes under the very edit that should keep
+// it selected. An undo replaces state.notes wholesale and so drops the
+// selection, which is the honest answer — that note is gone.
+let selNote = null;
+export function selectNote(index) { selNote = state.notes[index] || null; }
 
 // ---- the ladder, as lanes -------------------------------------------------
 
 export const LANE_TOP = 15;                          // taara Ni
 export const LANE_BOT = -8;                          // mandra Sa
 export const LANE_COUNT = LANE_TOP - LANE_BOT + 1;   // 24
-const LANE_H = 10;                                   // px
+// Tall enough for a block to carry a name that can be read and a body that can
+// be grabbed: at 10px both were 7.5px type on an 8px target.
+const LANE_H = 13;                                   // px
 
 // The staff's own placement rule, with nothing added: one rung per lane, the
 // Ga-Ma gap included, so this and noteY() cannot disagree about what an octave
@@ -108,9 +158,6 @@ export function laneList() {
       svi: svi < 0 ? null : svi,
       dead: svi < 0,
       letter: svi < 0 ? '' : SVARA_LETTER[svi],
-      // The Sa of each sthayi carries the band's mark, the same ▲■▼ the sheet's
-      // row gutter uses — three marks down the side rather than 21.
-      mark: svi === 0 ? OCT_MARK[oct] : '',
     });
   }
   return out;
@@ -124,6 +171,9 @@ const editable = p => p.index != null && !p.merged && p.total != null;
 // What the panel REPORTS a part as lasting: the source note's whole played
 // length where there is one, and the room it takes in this division otherwise.
 const partBeats = p => unitsToBeats(editable(p) ? p.total : p.units);
+
+const selectedPart = parts => parts.find(p => editable(p)
+  && state.notes[p.index] === selNote) || null;
 
 export function partsOf(box, rows) {
   const startOf = new Map();
@@ -201,9 +251,22 @@ function rulerHTML(cap) {
   return out;
 }
 
-function keysHTML(lanes) {
-  return lanes.map(l => `<span class="roll-key${l.dead ? ' dead' : ''}" data-oct="${l.oct}">`
-    + `<b>${l.letter}</b><i>${l.mark}</i></span>`).join('');
+// The sthayi is NAMED down the side, once per band. It used to be one ▲■▼ on
+// the Sa of each band, 7px tall, and the gutter then read as the same seven
+// letters three times over with nothing saying which seven.
+function bandsHTML() {
+  return [1, 0, -1].map(oct => `<span class="roll-band" data-oct="${oct}">`
+    + `<i>${OCT_MARK[oct]}</i><b>${STHAYI[oct]}</b></span>`).join('');
+}
+
+// Only the lanes that hold a note in this division are lettered at full
+// strength. 21 equally loud letters is a texture; the three or four in use are
+// what the eye is looking for when it reads across from a block.
+function keysHTML(lanes, used, selRow) {
+  return lanes.map((l, i) => `<span class="roll-key${l.dead ? ' dead' : ''}`
+    + `${l.svi === 6 ? ' top' : ''}${used.has(i) ? ' on' : ''}`
+    + `${i === selRow ? ' sel' : ''}" data-oct="${l.oct}">`
+    + `${l.letter}</span>`).join('');
 }
 
 // The grid behind the notes: the lanes themselves, then the metre ruled across
@@ -211,8 +274,8 @@ function keysHTML(lanes) {
 // eight-beat division is 64 dantas wide, and one line per danta in this rail is
 // a grey wash, not a grid.
 function gridHTML(lanes, cap) {
-  let out = lanes.map((l, i) => `<i class="roll-lane${l.dead ? ' dead' : ''}"`
-    + ` data-oct="${l.oct}" style="top:${i * LANE_H}px"></i>`).join('');
+  let out = lanes.map((l, i) => `<i class="roll-lane${l.dead ? ' dead' : ''}`
+    + `${l.svi === 6 ? ' top' : ''}" data-oct="${l.oct}" style="top:${i * LANE_H}px"></i>`).join('');
   const sub = cap <= 4 * TIME_UNITS_PER_BEAT;
   for (let u = 1; u < cap; u += 1) {
     const onBeat = u % TIME_UNITS_PER_BEAT === 0;
@@ -225,29 +288,34 @@ function gridHTML(lanes, cap) {
   return out;
 }
 
+// A note that starts or ends outside this division, said in words. It was two
+// arrows (↤ ↦) beside a symbol name, which read as a Vasu that plays for a beat.
+const carryText = p => [
+  p.before ? 'continues from the box before' : '',
+  p.tail > 0 ? 'runs on into the next box' : '',
+].filter(Boolean).join(' · ');
+
 function titleOf(p) {
-  const len = beatsLabel(partBeats(p));
-  return `${partName(p.note)} · ${partSym(p.note)} · ${len} beat`
-    + `${partBeats(p) === 1 ? '' : 's'} played`
-    + (p.before ? ' · carried in from the division above' : '')
-    + (p.tail > 0 ? ' · carries on into the next division' : '');
+  if (p.index == null) return 'Empty — nothing is written here';
+  return [partName(p.note), beatsText(partBeats(p)), carryText(p)].filter(Boolean).join(' · ');
 }
 
-function blockHTML(p, boxAt, cap) {
+function blockHTML(p, boxAt, cap, sel) {
   const rel = p.at - boxAt;
   const w = Math.min(p.units, cap - rel);
   const cls = ['roll-blk',
     p.index == null ? 'derived' : '',
     editable(p) ? 'edit' : '',
+    p === sel ? 'sel' : '',
     p.filled ? 'var' : '',
     p.m2 ? 'm2' : '',
     p.offLadder ? 'off' : '',
     p.before ? 'in' : '',
     p.tail > 0 ? 'out' : ''].filter(Boolean).join(' ');
-  // A name needs room to be a name. Below half a beat the block is a few pixels
-  // wide and a clipped letter reads as dirt, so the tooltip and the list below
-  // carry it instead.
-  const label = p.units >= TIME_UNITS_PER_BEAT / 2 ? partName(p.note) : '';
+  // A name needs room to be a name. Under a tenth of the division the block is
+  // too narrow for one and a clipped letter reads as dirt, so the tooltip and
+  // the list below carry it instead.
+  const label = w / cap >= 0.1 ? `${headMark(p)} ${svaraName(p.note)}` : '';
   return `<div class="${cls}" data-part="${p.i}" data-left="${pctOf(rel, cap)}"`
     + ` title="${titleOf(p)}"`
     + ` style="left:${pctOf(rel, cap)}%;width:${pctOf(w, cap)}%;top:${p.row * LANE_H}px">`
@@ -260,82 +328,132 @@ function blockHTML(p, boxAt, cap) {
 // empty space. A true piano roll would show nothing there — but a written
 // Maguru rest IS score, and one that cannot be seen or reached from this panel
 // is one nobody can edit; a half-empty division would also look exactly like a
-// full one.
-function restsHTML(rests, boxAt, cap) {
+// full one. Room nobody has written in is drawn too, but faint and unlabelled:
+// it is not a rest, it is where the next note goes.
+function restsHTML(rests, boxAt, cap, sel) {
   return rests.map(p => {
     const rel = p.at - boxAt;
     const w = Math.min(p.units, cap - rel);
     const cls = ['roll-rest', p.index == null ? 'derived' : '',
-      editable(p) ? 'edit' : ''].filter(Boolean).join(' ');
+      editable(p) ? 'edit' : '', p === sel ? 'sel' : ''].filter(Boolean).join(' ');
     return `<div class="${cls}" data-part="${p.i}" data-left="${pctOf(rel, cap)}"`
       + ` title="${titleOf(p)}"`
       + ` style="left:${pctOf(rel, cap)}%;width:${pctOf(w, cap)}%">`
-      + `<span class="roll-len">${beatsLabel(partBeats(p))}</span>`
+      + `<span class="roll-len">${p.index == null ? '' : beatsLabel(partBeats(p))}</span>`
       + (editable(p) ? '<span class="roll-grip"></span>' : '')
       + '</div>';
   }).join('');
 }
 
-function rollHTML(model, boxAt) {
+function rollHTML(model, boxAt, sel) {
   const { lanes, notes, rests, cap } = model;
+  const used = new Set(notes.map(p => p.row));
   // Where the score is sounding, if it is sounding in THIS division. It rides
   // on the same state the staff's own highlight reads, so the line and the
   // recoloured glyph cannot point at different notes.
   const head = state.playing && state.hlAt != null
     && state.hlAt >= boxAt && state.hlAt < boxAt + cap
     ? `<i class="roll-head" style="left:${pctOf(state.hlAt - boxAt, cap)}%"></i>` : '';
-  return `<div class="roll" style="--lane-h:${LANE_H}px;--lanes:${lanes.length}">`
-    + '<div class="roll-gut"></div>'
+  // Focusable, because the arrow keys edit the selected note only while the
+  // roll has the focus — everywhere else they belong to the break tool. The
+  // data-act is what lets inspector.js put the focus back after a rebuild.
+  return `<div class="roll" tabindex="0" data-act="roll" style="--lane-h:${LANE_H}px;--lanes:${lanes.length}">`
+    + '<div class="roll-gut">beat</div>'
     + `<div class="roll-ruler">${rulerHTML(cap)}</div>`
-    + `<div class="roll-keys">${keysHTML(lanes)}</div>`
+    + `<div class="roll-bands">${bandsHTML()}</div>`
+    + `<div class="roll-keys">${keysHTML(lanes, used, sel ? sel.row : null)}</div>`
     + `<div class="roll-track">${gridHTML(lanes, cap)}`
-    + `${notes.map(p => blockHTML(p, boxAt, cap)).join('')}${head}</div>`
-    + '<div class="roll-gut rest">rest</div>'
-    + `<div class="roll-rests">${restsHTML(rests, boxAt, cap)}</div>`
+    + `${notes.map(p => blockHTML(p, boxAt, cap, sel)).join('')}${head}</div>`
+    + '<div class="roll-gut">rest</div>'
+    + `<div class="roll-rests">${restsHTML(rests, boxAt, cap, sel)}</div>`
     + '</div>';
 }
 
-function listRowHTML(p, i) {
-  const len = beatsLabel(partBeats(p));
-  const fixedWhy = p.index == null ? 'auto-filled silence' : 'stands for several notes';
-  // The symbol column names the glyph DRAWN in this division, while the length
-  // is the whole note's — so a note that starts or ends outside the division is
-  // marked, or the row reads as a Vasu that plays for a beat.
-  const carry = (p.before ? '<span class="stime-carry" title="starts in the division above">↤</span>' : '')
-    + (p.tail > 0 ? '<span class="stime-carry" title="carries on into the next division">↦</span>' : '');
-  return `<div class="stime-row" data-part="${i}">`
-    + `<span class="stime-n">${i + 1}</span>`
-    + `<span class="stime-nm">${partName(p.note)}${carry}</span>`
-    + `<span class="stime-sym">${partSym(p.note)}</span>`
-    + (editable(p)
-      ? '<input class="stime-input" type="number" min="0.125" max="64" step="0.125"'
-        + ` value="${unitsToBeats(p.total)}" aria-label="${partName(p.note)} played length in beats">`
-      : `<span class="stime-fixed" title="${fixedWhy}">${len}</span>`)
+// ---- the readout and the control row ---------------------------------------
+
+const btn = (act, label, title, { on = false, off = false, beats = null } = {}) =>
+  `<button type="button" class="sed-b${on ? ' on' : ''}" data-act="${act}" title="${title}"`
+  + (beats == null ? '' : ` data-beats="${beats}"`)
+  + `${off ? ' disabled' : ''}>${label}</button>`;
+
+// What is selected, on one line: which note, where it starts, how long it
+// plays. With nothing selected the same line says what the division holds.
+function lcdText(p, boxAt) {
+  const n = p.note;
+  const isNote = n.type !== 'rest';
+  return [isNote ? STHAYI[n.oct] || '' : '',
+    p.before ? '' : 'beat ' + beatsLabel(unitsToBeats(p.at - boxAt) + 1),
+    '<span class="sec-len">' + beatsText(partBeats(p)) + '</span>',
+    carryText(p)].filter(Boolean).join(' · ');
+}
+
+// Only what a drag cannot say. A control that would do nothing is disabled
+// rather than left to be pressed and ignored — a svara with no second form, a
+// length the chukki cannot be put on.
+function barHTML(p) {
+  if (!p) return '<div class="sed empty">Click a note to edit it.</div>';
+  const n = p.note;
+  const is = symbolOf(p.total);
+  // A length that takes more than one glyph to write is no symbol's, so it is
+  // listed as itself rather than a symbol being shown that it is not.
+  const length = '<select class="sed-len" data-act="len" aria-label="Length">'
+    + (is ? '' : `<option selected disabled>${beatsText(unitsToBeats(p.total))}</option>`)
+    + LENGTHS.map(sym => `<option value="${SOUND[sym].dur}"${is?.sym === sym ? ' selected' : ''}>`
+      + `${SYM_LABEL[sym]} · ${beatsLabel(SOUND[sym].dur)}</option>`).join('')
+    + '</select>';
+  const dottable = !!is && DOTTABLE.includes(is.sym);
+  const dot = btn('dot', '•', 'Chukki — half as long again', {
+    on: !!is?.dot,
+    off: !dottable,
+    beats: dottable ? SOUND[is.sym].dur * (is.dot ? 1 : DOT_MULT) : null,
+  });
+
+  let head = '';
+  if (n.type !== 'rest') {
+    const tone = SVARA_TONES[n.svaraIndex];
+    const two = hasVariant(n.svaraIndex);
+    const varMark = n.svaraIndex === MA_INDEX ? '△' : '●';
+    head = '<span class="sed-pair">'
+      + btn('nat', `○ ${TONE_LETTER[tone.natural]}`, 'Hollow — the natural',
+        { on: !p.filled, off: !two })
+      + (two ? btn('var', `${varMark} ${TONE_LETTER[tone.variant]}`,
+        n.svaraIndex === MA_INDEX ? 'Triangle — the raised Ma' : 'Filled — the lowered one',
+        { on: p.filled }) : '')
+      + '</span>';
+  }
+  return `<div class="sed">${length}${dot}${head}`
+    + '<button type="button" class="sed-b sed-del" data-act="del"'
+    + ` title="${n.type === 'rest' ? 'Delete this rest' : 'Delete — leaves silence in its place'}">Delete</button>`
     + '</div>';
 }
 
-// The list under the roll. It is the typed-length path and the only one a
-// keyboard can reach, so it stays exactly as it was when the strip was there.
-function rowsHTML(parts) {
-  return `<div class="stime-rows">${parts.map(listRowHTML).join('')}</div>`;
-}
+const stepHTML = (act, at, label, title) =>
+  `<button type="button" class="sec-step" data-act="${act}" title="${title}"`
+  + (at == null ? ' disabled' : ` data-at="${at}"`) + `>${label}</button>`;
 
-export function sectionHTML(box, model, cap) {
+// `nav` is the division on either side, as clock positions, or null at an end.
+export function sectionHTML(box, model, cap, nav = {}) {
   const beatsN = cap / TIME_UNITS_PER_BEAT;
-  const parts = model.parts;
-  const written = parts.filter(p => p.index != null);
-  const playedU = written.reduce((u, p) => u + p.units, 0);
-  const notes = written.filter(p => p.note.type !== 'rest').length;
-  return `<div class="ihead"><span class="big">Section</span>
-      <span class="sub">box ${Math.floor(box.at / cap) + 1} · ${beatsN} beats · `
-    + `${notes} note${notes === 1 ? '' : 's'}</span></div>
-    <div class="iedit"><div class="stime-wrap">
-      ${rollHTML(model, Number(box.at))}
-      ${rowsHTML(parts)}
-      <div class="stime-sum">${beatsLabel(unitsToBeats(playedU))} of ${beatsN} beats written</div>
-      <div class="dim">Drag a block to move or re-pitch it, its right edge to
-      change how long it plays, or shift-click to flip the notehead.</div>
-    </div></div>`;
+  const written = model.parts.filter(p => p.index != null);
+  const freeU = cap - written.reduce((u, p) => u + p.units, 0);
+  const notes = model.notes.length;
+  const sel = selectedPart(model.parts);
+  const room = freeU > 0 ? beatsText(unitsToBeats(freeU)) + ' free' : 'full';
+  const name = sel && (sel.note.type === 'rest' ? 'Rest' : headMark(sel) + ' ' + svaraName(sel.note));
+  const lcd = sel
+    ? `<b>${name}</b>${lcdText(sel, Number(box.at))}`
+    : `${beatsN} beats · ${notes} note${notes === 1 ? '' : 's'} · ${room}`;
+  return '<div class="ihead sec">'
+    + stepHTML('prev', nav.prev, '‹', 'Previous box')
+    + `<span class="big">Box ${Math.floor(box.at / cap) + 1}</span>`
+    + stepHTML('next', nav.next, '›', 'Next box')
+    + `<span class="sec-lcd">${lcd}</span></div>`
+    + '<div class="iedit"><div class="stime-wrap">'
+    + rollHTML(model, Number(box.at), sel)
+    + barHTML(sel)
+    + '<div class="sed-hint">Drag to move · drag the right edge to resize · '
+    + '↑↓ svara · Shift ↑↓ sthayi · ←→ nudge · Del</div>'
+    + '</div></div>';
 }
 
 // ---- dragging -------------------------------------------------------------
@@ -366,19 +484,36 @@ export function landingRow(row, dir) {
 // different rules — and one gesture is one undo.
 //
 // A drag listens on the WINDOW, the way breaks.js and repeats.js do, rather
-// than on the block or through setPointerCapture. A block is 8 pixels tall and
+// than on the block or through setPointerCapture. A block is a lane tall and
 // the pointer leaves it within one lane of vertical travel, so element-bound
 // listeners hear the press and then nothing — the note would follow the pointer
 // only while the pointer stayed on top of it, which for an upward drag is never.
 // The window also survives the element: render() rebuilds the panel, and a
 // listener on markup that has just been replaced is a gesture dropped halfway.
-export function wireSection(panel, model, boxAt, cap) {
+//
+// `redraw` puts the panel back WITHOUT a score render — a selection changes
+// what the editor shows and nothing on the staff. Every edit that turns out to
+// be a no-op calls it too, which is what puts a dragged block back where it
+// was: an edit that lands re-renders the score, and that rebuilds the panel.
+export function wireSection(panel, model, boxAt, cap, redraw, go) {
   const track = panel.querySelector('.roll-track');
   if (!track) return;
+  const roll = panel.querySelector('.roll');
   const parts = model.parts;
+  const sel = selectedPart(parts);
   const MAX_UNITS = 64 * TIME_UNITS_PER_BEAT;
   const all = [...panel.querySelectorAll('.roll-blk, .roll-rest')];
-  const inputOf = i => panel.querySelector(`.stime-row[data-part="${i}"] .stime-input`);
+  const pick = p => { selNote = state.notes[p.index] || null; };
+
+  // Any press on the roll gives it the focus, which is what sends the arrow
+  // keys here. In the CAPTURE phase, because the drags below preventDefault()
+  // their pointerdown (so the browser would not focus anything) and the grip
+  // stops it propagating. It also takes the focus OFF the length menu, which
+  // inspector.js will not rebuild the panel under.
+  roll.addEventListener('pointerdown', () => roll.focus({ preventScroll: true }), true);
+
+  panel.querySelectorAll('.sec-step[data-at]').forEach(b =>
+    b.addEventListener('click', () => go(Number(b.dataset.at))));
 
   // Everything downstream of a moved note moves with it. A sequence has no room
   // to slide one note through, so this is not decoration — it is what the edit
@@ -388,7 +523,6 @@ export function wireSection(panel, model, boxAt, cap) {
     if (!p || p.at <= from) return;
     el.style.left = `${Number(el.dataset.left) + pctOf(dUnits, cap)}%`;
   });
-  const unripple = () => all.forEach(el => { el.style.left = `${el.dataset.left}%`; });
 
   // ---- right edge: how long it plays ----
   all.filter(el => el.classList.contains('edit')).forEach(el => {
@@ -418,17 +552,18 @@ export function wireSection(panel, model, boxAt, cap) {
         el.style.width = `${pctOf(shown, cap)}%`;
         el.classList.toggle('out', total - p.before > cap - rel);
         const b = unitsToBeats(total);
-        const input = inputOf(i);
-        if (input) input.value = b;
         const len = el.querySelector('.roll-len');
         if (len) len.textContent = beatsLabel(b);
+        const lcd = p === sel && panel.querySelector('.sec-len');
+        if (lcd) lcd.textContent = beatsText(b);
       };
       const up = () => {
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);
         window.removeEventListener('pointercancel', up);
         dragging = false;
-        setNoteDuration(p.index, unitsToBeats(total));
+        pick(p);
+        if (!setNoteDuration(p.index, unitsToBeats(total))) redraw();
       };
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', up);
@@ -439,10 +574,6 @@ export function wireSection(panel, model, boxAt, cap) {
   // ---- the body: pitch and position, in one gesture ----
   panel.querySelectorAll('.roll-blk.edit').forEach(el => {
     const p = parts[Number(el.dataset.part)];
-    // Shift-click on a svara with no second form is a no-op rather than a wrong
-    // note — Sa and Pa have no lowered form, exactly as ⇧ on those keys writes
-    // nothing. The class is what stops the cursor promising otherwise.
-    if (!hasVariant(p.note.svaraIndex)) el.classList.add('novar');
 
     el.addEventListener('pointerdown', ev => {
       if (ev.target.closest('.roll-grip')) return;
@@ -474,23 +605,17 @@ export function wireSection(panel, model, boxAt, cap) {
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);
         window.removeEventListener('pointercancel', up);
-        el.classList.remove('walled');
         dragging = false;
-        if (!moved) {
-          // A click that went nowhere is not a move. With shift it is the one
-          // edit a shared rung makes necessary — the notehead — and without it
-          // the division is already selected, so it is simply a click.
-          if (e2.shiftKey) {
-            setNoteHead(p.index, isFilled(p.note.svaraIndex, p.note.head) ? 'o' : 'f');
-          }
-          return;
-        }
-        const lane = LANES[row];
-        unripple();
-        if (!moveNote(p.index, { svaraIndex: lane.svi, oct: lane.oct, delta: dUnits })) {
-          el.style.left = `${el.dataset.left}%`;
-          el.style.top = `${row0 * LANE_H}px`;
-        }
+        // Whatever was just touched is the note being worked on.
+        pick(p);
+        // A click that went nowhere is not a move: it selects. With shift it
+        // also flips the notehead — the shortcut for the editor's own button,
+        // and a no-op on Sa and Pa, which have no second form to flip to.
+        const done = moved
+          ? moveNote(p.index, { svaraIndex: LANES[row].svi, oct: LANES[row].oct, delta: dUnits })
+          : e2.shiftKey
+            && setNoteHead(p.index, isFilled(p.note.svaraIndex, p.note.head) ? 'o' : 'f');
+        if (!done) redraw();
       };
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', up);
@@ -498,17 +623,60 @@ export function wireSection(panel, model, boxAt, cap) {
     });
   });
 
-  // ---- the list: the typed length, and the only keyboard-reachable path ----
-  parts.forEach((p, i) => {
-    const input = inputOf(i);
-    input?.addEventListener('change', () => setNoteDuration(p.index, input.value));
-    const rowEl = panel.querySelector(`.stime-row[data-part="${i}"]`);
-    const blk = all.find(el => Number(el.dataset.part) === i);
-    if (!rowEl || !blk) return;
-    const lit = on => { rowEl.classList.toggle('lit', on); blk.classList.toggle('lit', on); };
-    rowEl.addEventListener('pointerenter', () => lit(true));
-    rowEl.addEventListener('pointerleave', () => lit(false));
-    blk.addEventListener('pointerenter', () => lit(true));
-    blk.addEventListener('pointerleave', () => lit(false));
+  // Empty roll puts the selection down, which is what brings the how-to back.
+  track.addEventListener('pointerdown', ev => {
+    if (ev.target.closest('.roll-blk') || !selNote) return;
+    selNote = null;
+    redraw();
+  });
+
+  // ---- the rest lane: click to select ----
+  parts.filter(p => editable(p) && p.note.type === 'rest').forEach(p => {
+    all.find(el => Number(el.dataset.part) === p.i)
+      ?.addEventListener('click', () => { pick(p); redraw(); });
+  });
+
+  // ---- the selected note: the control row and the keys ----
+  if (!sel) return;
+  const i = sel.index;
+  const src = state.notes[i];
+  const isNote = src.type === 'note';
+  const pitchTo = row => setNotePitch(i, LANES[row].svi, LANES[row].oct);
+  const run = {
+    up: () => pitchTo(landingRow(sel.row - 1, -1)),
+    down: () => pitchTo(landingRow(sel.row + 1, 1)),
+    octup: () => setNotePitch(i, src.svaraIndex, src.oct + 1),
+    octdown: () => setNotePitch(i, src.svaraIndex, src.oct - 1),
+    nat: () => setNoteHead(i, 'o'),
+    var: () => setNoteHead(i, 'f'),
+    earlier: () => nudgeNote(i, -1),
+    later: () => nudgeNote(i, 1),
+    del: () => removeNote(i),
+  };
+  panel.querySelectorAll('.sed button[data-act]').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.beats) setNoteDuration(i, b.dataset.beats);
+    else run[b.dataset.act]?.();
+  }));
+  // The length menu. The panel does not rebuild itself under a focused field
+  // (playback would close the menu while it is being read), so it is asked to
+  // here.
+  const len = panel.querySelector('.sed-len');
+  len.addEventListener('change', () => { setNoteDuration(i, len.value); redraw(); });
+
+  // Only with the focus on the roll, and stopped there: on the document the
+  // arrows nudge the current break and Backspace deletes the LAST note.
+  roll.addEventListener('keydown', e => {
+    if (e.target !== roll || e.ctrlKey || e.metaKey || e.altKey) return;
+    const act = (e.shiftKey && SHIFT_KEYS[e.key]) || KEYS[e.key];
+    if (!act || (act !== 'del' && !isNote)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    run[act]();
   });
 }
+
+const KEYS = {
+  ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'earlier', ArrowRight: 'later',
+  Delete: 'del', Backspace: 'del',
+};
+const SHIFT_KEYS = { ArrowUp: 'octup', ArrowDown: 'octdown' };

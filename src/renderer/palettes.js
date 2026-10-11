@@ -1,5 +1,5 @@
-// Left-hand sidebar palettes (sound symbols, rests, repeat braces, octaves),
-// plus the repeat brace toolbar above the sheet and the tones table.
+// Left-hand sidebar palettes (notes, rests, repeat braces, octaves, layout),
+// plus the tones table. Glyph names carry data-i18n; i18n.js translates them.
 
 import { state } from './state.js';
 import {
@@ -9,6 +9,8 @@ import { repeatGlyphSVG } from './notation.js';
 import { addRest } from './score.js';
 import { setBreakTool, isBreakTool } from './breaks.js';
 import { setRepeatTool, repeatToolState } from './repeats.js';
+import { setOct, buildPiano } from './piano.js';
+import { l10n } from './i18n.js';
 
 // Icon dimensions in each palette grid. Centralised so it's one edit when
 // the tool sidebar needs resizing.
@@ -16,7 +18,6 @@ const SIZE = {
   sound: { w: 20, h: 28 },
   rest: { w: 18, h: 24 },
   repeat: { w: 26, h: 34 },     // sidebar palette icons — bigger
-  brace: { w: 24, h: 38 },     // navbar brace icons — bigger
 };
 
 function img(src, w, h) {
@@ -66,13 +67,42 @@ const TRI_MARK = '<svg class="mk-t" viewBox="0 0 12 11" aria-hidden="true">'
   + '<polygon points="6,1.2 11,9.8 1,9.8" fill="none" stroke="#111" stroke-width="1.5"'
   + ' stroke-linejoin="round"/></svg>';
 
+//
+// The marks row is also a row of SWITCHES, one per tone, for the sthayi the
+// legend is showing — which is state.oct, the same sthayi the piano's tabs
+// select, stepped from here by the two arrows either side of the table. A tone
+// switched off is a blank white cell; score.js refuses to write it.
 export function buildTones() {
+  const on = state.tones[state.oct + 1];
   const head = `<tr>${TONE_LETTER.map(l => `<td>${l}</td>`).join('')}</tr>`;
-  const marks = `<tr>${TONE_MARK.map(m => {
-    if (m === 't') return `<td class="mk">${TRI_MARK}</td>`;
-    return `<td class="mk"><span class="mk-${m}"></span></td>`;
+  const marks = `<tr>${TONE_MARK.map((m, semi) => {
+    const cls = `mk${on[semi] ? '' : ' off'}`;
+    if (m === 't') return `<td class="${cls}" data-semi="${semi}">${TRI_MARK}</td>`;
+    return `<td class="${cls}" data-semi="${semi}"><span class="mk-${m}"></span></td>`;
   }).join('')}</tr>`;
   document.getElementById('tonesTable').innerHTML = head + marks;
+  const name = document.getElementById('toneName');
+  name.dataset.i18n = ['Mandra', 'Madhya', 'Taara'][state.oct + 1];
+  name.textContent = l10n(name.dataset.i18n);
+  document.getElementById('tonePrev').disabled = state.oct <= -1;
+  document.getElementById('toneNext').disabled = state.oct >= 1;
+}
+
+export function initTones() {
+  buildTones();
+  document.getElementById('tonesTable').addEventListener('click', e => {
+    const td = e.target.closest('td.mk');
+    if (!td) return;
+    const row = state.tones[state.oct + 1];
+    row[+td.dataset.semi] = !row[+td.dataset.semi];
+    buildTones();
+    buildPiano();
+  });
+  document.getElementById('tonePrev').addEventListener('click', () => setOct(state.oct - 1));
+  document.getElementById('toneNext').addEventListener('click', () => setOct(state.oct + 1));
+  document.addEventListener('oct:changed', buildTones);
+  // Another document's selection was swapped in (tab, file, import).
+  document.addEventListener('tones:changed', () => { buildTones(); buildPiano(); });
 }
 
 // A repeat glyph ARMS the tool rather than inserting anything: the pair is
@@ -111,27 +141,9 @@ function syncRepeat(el, count) {
   }
 }
 
-// Both surfaces show the same tool, so both are redrawn from the same state -
-// arming from the navbar lights the sidebar glyph too.
 function syncRepeatUI() {
   document.querySelectorAll('#repeatGrid .glyph.rep').forEach(
     el => syncRepeat(el, +el.dataset.rcount));
-  document.querySelectorAll('#braceTools .rb').forEach(
-    el => syncRepeat(el, +el.dataset.count));
-}
-
-export function buildBraces() {
-  const counts = [['repeat', 2], ['repeat_3', 3], ['repeat_4', 4]];
-  const w = SIZE.brace.w, h = SIZE.brace.h;
-  document.getElementById('braceTools').innerHTML = counts.map(([id, c]) =>
-    `<button class="rb" data-rkey="${id}" data-count="${c}" data-rkind="open" data-rw="${w}" title="Open repeat ×${c}">
-      ${halfImg('open', c, w, h)}<span class="cnt">×${c}</span>
-    </button>`).join('');
-
-  document.querySelectorAll('#braceTools .rb').forEach(b =>
-    b.addEventListener('click', () => armRepeat(+b.dataset.count)),
-  );
-  syncRepeatUI();
 }
 
 function setSelected(gridSelector, predicate) {
@@ -148,7 +160,7 @@ export function buildPalettes() {
   document.getElementById('soundGrid').innerHTML = sounds.map((s, i) =>
     `<div class="glyph ${i === 0 ? 'sel' : ''}" data-snd="${s[0]}" title="${s[1]} — weight ${weightLabel(SOUND[s[0]].dur)}">
       <span class="art">${img(SYM_FILE[s[0]].white, SIZE.sound.w, SIZE.sound.h)}</span>
-      <span class="nm">${s[1]}</span>
+      <span class="nm" data-i18n="${s[1]}">${s[1]}</span>
     </div>`).join('');
 
   const rests = [
@@ -159,7 +171,7 @@ export function buildPalettes() {
   document.getElementById('restGrid').innerHTML = rests.map(s =>
     `<div class="glyph" data-rest="${s[0]}" title="Insert ${s[1]}">
       <span class="art">${img(SYM_FILE[REST_MAP[s[0]]].rest, SIZE.rest.w, SIZE.rest.h)}</span>
-      <span class="nm">${s[1]}</span>
+      <span class="nm" data-i18n="${s[1]}">${s[1]}</span>
     </div>`).join('');
 
   // Three repeat types. The glyph shows the LEFT half of the SVG while the
@@ -181,7 +193,7 @@ export function buildPalettes() {
   document.getElementById('octGrid').innerHTML = octs.map(o =>
     `<div class="glyph ${o[1] === 0 ? 'sel' : ''}" data-oct="${o[1]}">
       <span class="art">${octGlyph(o[0])}</span>
-      <span class="nm">${o[2]}</span>
+      <span class="nm" data-i18n="${o[2]}">${o[2]}</span>
     </div>`).join('');
 
   // Layout tools act on the SHEET rather than on the score: arming Break and
@@ -189,7 +201,7 @@ export function buildPalettes() {
   document.getElementById('layoutGrid').innerHTML =
     `<div class="glyph" data-tool="break" title="Break — click a division on the sheet to move it, and everything after it, down to a new row. The break you worked on last is marked on the staff: nudge it with ←/→, drag its ↵ badge to move it, click that badge to remove it.">
       <span class="art">${breakGlyph()}</span>
-      <span class="nm">Break</span>
+      <span class="nm" data-i18n="Break">Break</span>
     </div>`;
 
   // -------- listeners --------

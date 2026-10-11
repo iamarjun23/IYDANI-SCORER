@@ -523,19 +523,18 @@ export function installRepeatTool() {
   });
 
   // --- from the palette ---
-  ['repeatGrid', 'braceTools'].forEach(id => {
-    const host = document.getElementById(id);
-    if (!host) return;
+  {
+    const host = document.getElementById('repeatGrid');
     host.addEventListener('pointerdown', e => {
-      const el = e.target.closest('[data-rcount],[data-count]');
+      const el = e.target.closest('[data-rcount]');
       if (!el) return;
-      const count = Number(el.dataset.rcount || el.dataset.count) || 2;
+      const count = Number(el.dataset.rcount) || 2;
       // Dragging always makes a PAIR, whichever half the palette glyph is
       // showing: the glyph's open/close toggle belongs to the click path,
       // where the two ends are placed one at a time.
       beginDrag({ kind: 'new', count, closing: false, art: ghostArt('open', count) }, e);
     });
-  });
+  }
 
   // One set of move/up listeners for both sources, on the window, so a drag
   // that leaves the sheet — which is how a mark is thrown away — still ends.

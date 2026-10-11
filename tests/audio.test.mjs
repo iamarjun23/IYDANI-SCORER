@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  onsetOffset, buildSustainLoop, freqOfMidi, sustainLevelAt, sustainTone,
+  onsetOffset, buildSustainLoop, freqOfMidi, sustainLevelAt, sustainTone, sustainDecayT,
+  shapeNote,
 } from '../src/renderer/audio.js';
 import {
   SAMPLE_DETUNE, SAMPLE_DETUNE_CENTS, SAMPLE_LOOP_AT, SAMPLE_LOOP_MIN,
-  SUSTAIN_FLOOR, SUSTAIN_TONE_TO_HZ,
+  SUSTAIN_FLOOR, SUSTAIN_TONE_TO_HZ, SUSTAIN_DECAY_T, SUSTAIN_DECAY_MIN_T,
+  HELD_FADE_AT, HELD_FADE_T,
 } from '../src/renderer/config.js';
 
 // ---------- onset detection ----------
@@ -255,6 +257,46 @@ assert.ok(drop3 > 7 && drop3 < 11, `a three-second hold is ~9 dB down (${drop3.t
 // Level is proportional, so a velocity-scaled voice decays by the same shape.
 assert.ok(Math.abs(sustainLevelAt(0.4, 2) - 0.4 * sustainLevelAt(1, 2)) < 1e-12,
   'the decay scales with how hard the key was struck');
+
+// The decay through the loop is scaled to the NOTE. At the fixed three-second
+// constant a one-beat note sat flat from the loop point to the end of its beat
+// — a ring at the end of every beat. Whatever a note is worth, it is ~9 dB
+// down by its written end; a long one decays no slower than the judged shape
+// and a short one no faster than the recording does.
+for (const span of [0.4, 0.48, 1.3, 2.5]) {
+  const drop = -20 * Math.log10(sustainLevelAt(1, span, sustainDecayT(span)));
+  assert.ok(drop > 7 && drop < 10, `a ${span}s sustain ends ~9 dB down (${drop.toFixed(1)})`);
+}
+assert.equal(sustainDecayT(60), SUSTAIN_DECAY_T, 'a long note keeps the judged decay');
+assert.equal(sustainDecayT(0.01), SUSTAIN_DECAY_MIN_T, 'a short one is not dropped off a cliff');
+assert.equal(sustainDecayT(NaN), SUSTAIN_DECAY_MIN_T, 'a bad length still yields a real constant');
+
+// An UNLOOPED played note takes a held key's fade, and its release starts from
+// the level that fade has reached. Pinning the struck level there steps the
+// note back up to full as it is let go — a bump on the end of every long note.
+{
+  const record = () => {
+    const calls = [];
+    const log = name => (...args) => calls.push([name, ...args]);
+    return {
+      calls,
+      setValueAtTime: log('set'), linearRampToValueAtTime: log('lin'),
+      setTargetAtTime: log('target'), exponentialRampToValueAtTime: log('exp'),
+    };
+  };
+  const long = record();
+  const done = shapeNote(long, 1, 10, 2);
+  const fade = long.calls.find(c => c[0] === 'target');
+  assert.deepEqual(fade.slice(1), [0, 10 + HELD_FADE_AT, HELD_FADE_T], 'a long note fades like a held key');
+  const pin = long.calls.find(c => c[0] === 'set' && c[2] === 12);
+  assert.ok(Math.abs(pin[1] - Math.exp(-(2 - HELD_FADE_AT) / HELD_FADE_T)) < 1e-9,
+    'the release starts from the level the fade reached');
+  assert.ok(done > 12, 'and rings out after its written end');
+  const short = record();
+  shapeNote(short, 1, 10, HELD_FADE_AT / 2);
+  assert.ok(!short.calls.some(c => c[0] === 'target'), 'a short note is released before any fade is booked');
+  assert.equal(short.calls.find(c => c[0] === 'set' && c[2] > 10)[1], 1, 'and from the level it was struck at');
+}
 
 // The darkening must never reach down to the note itself. A flat 900 Hz target
 // reads correctly under the low and middle octaves, where it was judged by ear,

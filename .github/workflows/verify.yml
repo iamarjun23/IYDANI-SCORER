@@ -1,0 +1,22 @@
+name: verify
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # No install scripts: the suites are plain Node, so the Electron binary
+      # is not needed, and `prepare` would only point git at the commit hook.
+      - run: npm ci --ignore-scripts
+      # Not `npm run verify`: its version check reads CHANGELOG.md and
+      # STATUS.md, which .gitignore keeps out of the repository.
+      - run: npm run check
+      - run: npm test

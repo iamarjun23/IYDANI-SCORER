@@ -3,20 +3,21 @@
 // open document.
 
 import { state, docs, getActiveDoc } from './state.js';
-import { BPM } from './config.js';
+import { BPM, tonesFrom } from './config.js';
 import { render } from './notation.js';
-import { updateUndoButtons, undo } from './history.js';
-import { clearAll, clearBars } from './score.js';
-import { buildTones, buildBraces, buildPalettes } from './palettes.js';
+import { updateUndoButtons } from './history.js';
+import { clearBars } from './score.js';
+import { initTones, buildPalettes } from './palettes.js';
 import { buildPiano, buildSpanPicker, buildMidiKeyPicker } from './piano.js';
 import { buildKeyMap, installKeymapUI } from './keymap.js';
 import { loadBinds, applyBinds, saveBinds } from './keybinds.js';
-import { buildTabs, saveDoc } from './tabs.js';
+import { buildTabs, saveDoc, restoreDocs, initAutosave, onFileSaved } from './tabs.js';
 import { setThemeIcon, toggleTheme } from './theme.js';
-import { wireMenus, updateTalaLine, setZoom } from './menus.js';
+import { wireMenus, updateTalaLine, fitPage } from './menus.js';
 import { wireToolbar } from './toolbar.js';
-import { openLanguagePicker } from './language.js';
-import { openCowork } from './cowork.js';
+import { openLanguagePicker, refreshLanguage } from './language.js';
+import { l10n } from './i18n.js';
+import { wireCowork } from './cowork.js';
 import { installKeyboard } from './keyboard.js';
 import { installDismiss } from './popover.js';
 import { initUpdater } from './updater-ui.js';
@@ -45,15 +46,13 @@ function relabelShortcuts() {
 }
 
 function wireDock() {
-  document.getElementById('undoBtn').addEventListener('click', undo);
-  document.getElementById('clearBtn').addEventListener('click', clearAll);
   document.getElementById('clearBars').addEventListener('click', clearBars);
 }
 
 function wireHeaderButtons() {
   document.getElementById('themeBtn').addEventListener('click', toggleTheme);
   document.getElementById('langBtn').addEventListener('click', openLanguagePicker);
-  document.getElementById('coworkBtn').addEventListener('click', openCowork);
+  wireCowork();
 }
 
 function initNetworkIndicator() {
@@ -83,15 +82,18 @@ function initNetworkIndicator() {
   }
 
   async function update() {
-    const isOnline = await checkRealConnectivity();
-    if (isOnline) {
-      el.classList.remove('offline');
-      txt.textContent = 'Online';
-    } else {
-      el.classList.add('offline');
-      txt.textContent = 'Offline — will sync when connected';
-    }
+    online = await checkRealConnectivity();
+    paint();
   }
+
+  // Split from the check so a language change repaints without waiting on the
+  // network.
+  let online = true;
+  function paint() {
+    el.classList.toggle('offline', !online);
+    txt.textContent = l10n(online ? 'Online' : 'Offline — will sync when connected');
+  }
+  document.addEventListener('lang:changed', paint);
 
   window.addEventListener('online', update);
   window.addEventListener('offline', update);
@@ -103,6 +105,8 @@ function initNetworkIndicator() {
 }
 
 function seedFirstDoc() {
+  // The last session, if there is one — see the autosave note in tabs.js.
+  if (restoreDocs()) return;
   state.title = 'Untitled';
   state.preset = null;
   document.getElementById('titleVal').textContent = state.title;
@@ -110,6 +114,7 @@ function seedFirstDoc() {
     notes: state.notes,
     bars: state.bars,
     breaks: state.breaks,
+    tones: state.tones,
     lastBreak: state.lastBreak,
     title: state.title,
     preset: state.preset,
@@ -134,7 +139,7 @@ function initFileLoader() {
         importMidi(buf, file.name);
         saveDoc();
         buildTabs();
-      } else if (name.endsWith('.xml') || name.endsWith('.musicxml') || name.endsWith('.mxl')) {
+      } else if (name.endsWith('.xml') || name.endsWith('.musicxml')) {
         const { importMusicXml } = await import('./import.js');
         const text = await file.text();
         importMusicXml(text, file.name);
@@ -147,10 +152,13 @@ function initFileLoader() {
         state.notes = data.notes || [];
         state.bars = data.bars || [];
         state.breaks = data.breaks || [];
+        state.tones = tonesFrom(data.tones, state.notes.length > 0);
+        document.dispatchEvent(new Event('tones:changed'));
         // A file does not carry where somebody was editing it, so the pointer
         // starts clear on the score that has just been opened.
         state.lastBreak = null;
-        state.title = data.title || file.name.replace(/\.(dng\.)?json$/i, '');
+        state.file = file.name.replace(/\.(dng\.)?json$/i, '');
+        state.title = data.title || state.file;
         // The metre travels with the file. Register the definition before
         // naming it, or a custom time signature opens as the fallback and the
         // score is silently re-barred.
@@ -214,8 +222,7 @@ function init() {
   loadSettings();
 
   // build static UI
-  buildTones();
-  buildBraces();
+  initTones();
   buildPalettes();
   buildSpanPicker();
   buildMidiKeyPicker();
@@ -224,8 +231,11 @@ function init() {
 
   // visual setup
   setThemeIcon();
+  // The saved language, before the first frame: this also rebuilds the piano
+  // and key map in its script.
+  refreshLanguage();
   updateTalaLine();
-  setZoom(state.zoom);
+  fitPage();
 
   relabelShortcuts();
 
@@ -245,13 +255,17 @@ function init() {
   wireMonitor();
   wireAbout();
   wireAuth();
-  installDismiss('[data-menu],#zoomBtn,#timeSigBtn,#langBtn,#coworkBtn');
+  installDismiss('[data-menu],#zoomBtn,#timeSigBtn,#langBtn');
 
   // seed first document and paint the empty staff
   seedFirstDoc();
   render();
   buildTabs();
   updateUndoButtons();
+  // After the restore above, so the first write cannot be of a blank session
+  // over the one about to be put back.
+  initAutosave();
+  window.hamsleka?.onFileSaved?.(onFileSaved);
   initUpdater();
   initNetworkIndicator();
   initFileLoader();

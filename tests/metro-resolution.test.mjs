@@ -119,8 +119,34 @@ wait(1 / 2);
 onMetronomeTick();
 wait(1 / 4);
 play(1 / 4);
-// praya(2) + 4 units flushed by the tick + 2 more flushed by the press + praya(2).
+// praya(2) + 6 units of silence + praya(2). The tick writes none of it — four
+// units do not finish the beat — and the press writes all six.
 is(totalUnits(), 10, 'tick then press writes each unit of silence exactly once');
+
+// ---------- whole beats of silence are bindu rests, wherever the key came up ----------
+
+// A key is released anywhere between two clicks. A click that wrote everything
+// it had cut each beat of silence at the click, so releasing half a beat after
+// one filled the staff with pairs of vasu rests.
+for (const after of [1 / 2, 1 / 4, 3 / 8]) {
+  reset();
+  closeMetronomeSilence();
+  addNote(0, { playSound: false });
+  beginMetronomeEntry();
+  const up = startHoldPromotion(0, state.sym);
+  clock += beatMs() / 2;
+  onMetronomeTick();         // one click heard while the key is down: a bindu
+  clock += after * beatMs();
+  up();
+  endMetronomeEntry();
+  wait(1 - after);
+  for (let i = 0; i < 5; i++) { onMetronomeTick(); wait(1); }
+  const rests = state.notes.slice(1);
+  is(rests.length, 4, `released ${after} of a beat after a click: one rest a beat`);
+  is(rests.every(n => n.sym === 'rest_symbol_1'), true, '...and every one a bindu rest');
+  play(1 / 8);               // the part-beat left over lands in front of the next note
+  is(totalUnits(), 8 + Math.round((5 + 1 - after) * 8) + 1, '...with no silence lost');
+}
 
 // ---------- silence is measured in BEATS, so tempo scales it ----------
 

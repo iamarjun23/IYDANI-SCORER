@@ -159,6 +159,27 @@ export function semiOf(svaraIndex, head) {
   return isFilled(svaraIndex, head) && tone.variant != null ? tone.variant : tone.natural;
 }
 
+// ---------- Which tones a score uses ----------
+//
+// The sheet's tone legend is a switch per tone, per sthayi: three rows of
+// twelve, indexed [oct + 1][semi]. A tone switched off is blank in the legend
+// and is heard but not written (see toneOn() in state.js and addNote()).
+//
+// A new score starts on the scale's own seven — SVARAS' reading of each
+// ladder position — so the legend opens saying what the plain keys write.
+export const scaleTones = () => [0, 1, 2].map(() =>
+  Array.from({ length: 12 }, (_, semi) => SVARAS.slice(0, 7).some(s => s.semi === semi)));
+
+// A stored selection, made safe to index. A score from before the selection
+// existed has none: one holding music keeps all twelve, so nothing already
+// written is a tone its own legend refuses, and a blank one takes the scale.
+export function tonesFrom(saved, hasNotes) {
+  if (!Array.isArray(saved) || saved.length !== 3) {
+    return hasNotes ? [0, 1, 2].map(() => new Array(12).fill(true)) : scaleTones();
+  }
+  return saved.map(row => Array.from({ length: 12 }, (_, i) => !row || row[i] !== false));
+}
+
 // ---------- Recorded note samples ----------
 //
 // Named by the MIDI note they sound, so nothing has to parse a filename. Two
@@ -222,6 +243,23 @@ export const SAMPLE_DETUNE = Math.pow(2, SAMPLE_DETUNE_CENTS / 1200);
 // instrument's own balance and is left alone).
 export const SAMPLE_LOOP_AT = 0.40;
 
+// Whether playback takes that loop at all. OFF: a played note is the recording
+// played once, exactly as a held key is, so it fades the way the instrument
+// does and a long note is not held up past the ~1 s the recording carries.
+//
+// The loop was reported as a ring three separate ways — on a held key, at the
+// end of a long hold, and at the end of every beat in playback — and each
+// correction to its level or its tone moved the complaint without answering
+// it, because what is heard is not how loud the loop is but that it does not
+// CHANGE. A held key was cured by taking the loop away, and the same report
+// then came back for playback alone, which was the one voice still looping.
+// Decided once, at decode time: with this off no loop is ever built, so every
+// `loops.get()` downstream finds none.
+//
+// This is the knob if long notes are wanted held again — at the cost of the
+// ring, which is the same thing.
+export const SAMPLE_SUSTAIN_LOOP = false;
+
 // The shortest loop that may be taken, in seconds, rounded UP to whole periods.
 // Much shorter and the repetition rate lands in the audible range and the note
 // takes on a metallic ring of its own; much longer and more of the natural
@@ -233,6 +271,18 @@ export const SAMPLE_LOOP_MIN = 0.12;
 // instead, so every sustained voice carries a hard stop this far out. It is
 // long enough that no real hold reaches it.
 export const SAMPLE_SUSTAIN_MAX = 30;
+
+// A held key plays the recording once, and the recordings do not finish dying.
+// Measured: the body falls 25-35 dB inside the first second and then a residue
+// SITS — n59 flat at -36 dB for 0.8 s, n72 at -37 — with the low octave's
+// 2.5-4 kHz partials holding level under it, until the file's own fade cuts it
+// off. Those two files serve all of madhya, so every key on the default
+// keyboard ended on it: a small stationary buzz after the note. From
+// HELD_FADE_AT the held voice is therefore taken on down to silence, time
+// constant HELD_FADE_T, so the tail keeps falling instead of settling. Set by
+// measurement, not by ear — these two are the knob if a hold dies too soon.
+export const HELD_FADE_AT = 0.5;
+export const HELD_FADE_T = 0.6;
 
 // ---- what a HELD note does after the loop takes over ----
 //
@@ -290,6 +340,21 @@ export const SAMPLE_SUSTAIN_MAX = 30;
 export const SUSTAIN_FLOOR = 0;
 export const SUSTAIN_DECAY_T = 2.9;
 
+// SUSTAIN_DECAY_T is the SLOWEST a played note decays, not the rate of every
+// one. It was set against three-second holds, and under a one-beat note it is
+// no decay at all: measured at 72 bpm, a madhya note's pluck fell 6 dB in its
+// first 0.35 s and then sat within 1.5 dB until the beat ended, 11-17 dB above
+// where the recording itself would have been — a flat tone on the back half of
+// every beat, reported from the field as a ring at the end of each one. So the
+// decay through the loop takes its time constant from the NOTE: the length of
+// its sustained part (audio.js, sustainDecayT), which lands every note ~9 dB
+// down at its written end whatever it is worth. A bindu dies across its beat
+// like the pluck it is; a guru is still sounding through its second.
+// Floored here, at about the recording's own rate just past the loop point, so
+// a note only slightly longer than the pluck is not dropped off a cliff.
+// This is the knob if a short note dies too soon or still rings.
+export const SUSTAIN_DECAY_MIN_T = 0.35;
+
 // The progressive darkening, as a lowpass that falls from FROM to TO with time
 // constant SUSTAIN_TONE_T. The flutter lives in the upper partials, so rolling
 // them off is what removes it, and a real string loses them anyway.
@@ -340,18 +405,12 @@ export const SCRIPTS = {
   ta: ['ஸ', 'ரி', 'க', 'ம', 'ப', 'த', 'நி', 'ஸ்'],
 };
 
-// How a goli is NAMED on the staff and in the pitch chart: one letter per
-// ladder position, taken from the English svara names so there is no second
-// list to keep in step. Files/OCTAVES NOTES PLACMENT.svg labels every note this
-// way — S R R G G M M P D D N N across a chromatic octave — because on the
-// sheet the NOTEHEAD already says which of the pair it is: hollow for the
-// natural, filled for the lowered variant, a triangle for M2. The letter names
-// the svara; the head names the tone.
-//
-// This is deliberately NOT TONE_LETTER, which letters the twelve SEMITONES and
-// uses case to separate a variant from its natural (r/R, m/M). That distinction
-// belongs to the tone legend, the piano caps and the inspector, where there is
-// no notehead beside the letter to carry it.
+// One letter per LADDER POSITION, taken from the English svara names so there
+// is no second list to keep in step — S R R G G M M P D D N N across a
+// chromatic octave, as Files/OCTAVES NOTES PLACMENT.svg labels its chart. Only
+// the section roll's lanes read it now: a lane IS a ladder position, shared by
+// the pair. The names on the staff and in the pitch chart moved to TONE_LETTER
+// (see svaraName() in notation.js) so they match the piano key caps.
 export const SVARA_LETTER = SCRIPTS.en.map(n => n[0].toUpperCase());
 
 export const LANGS = {
@@ -857,7 +916,7 @@ export const MK_T_H = px(11);
 export const META_TOP = px(34);                 // margin-top
 export const META_GAP = px(18);                 // row-gap
 export const META_BOT = px(26);                 // margin-bottom
-export const META_LINE = px(17);                // one line of 15px Arial
+export const META_LINE = px(18);                // one .metaline, as laid out
 export const META_PT = 15 * 0.75;               // .metaline font-size
 export const META_VAL_GAP = px(8);              // .metaline .val margin-left
 
@@ -876,6 +935,24 @@ export const BRAND_BOTTOM = px(8);
 export const BRAND_PT = 11 * 0.75;
 export const BRAND_COLOR = '#7a4b9c';
 export const SHEET_INK = '#111';
+
+// Where rows start and stop on a page. Page one starts under the head; a later
+// page carries no head — the sheet does not repeat one — so its rows start at
+// the sheet's own top padding. Rows stop where the page pill starts, not at an
+// invented margin. PAGE_GAP is screen only: the stage showing between two
+// pages in Page view.
+//
+// These are MEASURED against the live sheet (first row at 186px), not only
+// summed from the rules: the head's margin-bottom and the meta block's
+// margin-top COLLAPSE, so the gap between them is the larger of the two and
+// not their sum, and the legend table is its two rows plus one whole pixel of
+// collapsed border.
+export const HEAD_H = Math.max(EMBLEM_MM, TONE_ROW_H + TONE_MK_H + px(1));
+export const META_Y = SHEET_PAD_TOP + HEAD_H + Math.max(HEAD_GAP_BOT, META_TOP);
+export const PAGE_FIRST_Y = META_Y + META_LINE * 2 + META_GAP + META_BOT + SCORE_PAD_Y;
+export const PAGE_NEXT_Y = SHEET_PAD_TOP + SCORE_PAD_Y;
+export const PAGE_BOT_LIMIT = PAGE_H_MM - Math.max(SHEET_PAD_BOT, PILL_BOTTOM + PILL_H_MM + 2);
+export const PAGE_GAP_MM = px(24);
 
 // jsPDF takes colour channels, the stylesheet writes hex — and writes SHORTHAND
 // where it can, so the three-digit form has to be EXPANDED, not sliced. Slicing
@@ -1210,7 +1287,10 @@ export const MENUS = {
     ['New', 'newDoc', 'Ctrl+N'],
     ['Open varase…', 'openVarase', ''],
     ['—'],
+    ['Reload preset', 'reload', ''],
+    ['—'],
     ['Save (.json)', 'save', ''],
+    ['Export PDF', 'exportPdf', ''],
     ['Export SVG', 'exportSvg', ''],
     ['Export MP3', 'exportMp3', ''],
     ['Export MIDI', 'exportMidi', ''],
@@ -1238,6 +1318,7 @@ export const MENUS = {
     ['—'],
     ['Toggle Light / Dark', 'theme', ''],
     ['Toggle Page View', 'page', ''],
+    ['Toggle Row Marks', 'gutter', ''],
   ],
   Plugins: [['No plugins installed', 'noop', '']],
   Help: [
