@@ -1529,7 +1529,20 @@ function pageEnd(last) {
     + `<div class="pggap" style="height:${mm(PAGE_GAP_MM)}"></div></div>`;
 }
 
+// A render on the next frame, however many are asked for before it. Note
+// entry asks for three or four per keystroke (the note, its floor symbol, the
+// release, the highlight clearing) and each one rebuilds the whole sheet — at
+// 13-25 ms apiece, fast typing queued more work than there was time for and
+// the keys lagged. One frame is the most any of them can be late. Under plain
+// Node (the tests) there is no frame to wait for, so it renders now.
+let pendingFrame = 0;
+export function renderSoon() {
+  if (typeof requestAnimationFrame !== 'function') return render();
+  if (!pendingFrame) pendingFrame = requestAnimationFrame(() => { pendingFrame = 0; render(); });
+}
+
 export function render() {
+  if (pendingFrame) { cancelAnimationFrame(pendingFrame); pendingFrame = 0; }
   const score = document.getElementById('score');
   // The last-break pointer is validated here because this is the one funnel
   // every path that can invalidate it ends in — undo, loading a file, clearing

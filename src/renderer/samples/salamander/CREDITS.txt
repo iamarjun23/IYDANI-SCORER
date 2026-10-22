@@ -1,0 +1,8 @@
+Salamander Grand Piano (Yamaha C5) by Alexander Holm
+Licensed under Creative Commons Attribution 3.0 (CC-BY 3.0)
+https://creativecommons.org/licenses/by/3.0/
+
+Taken from the subset hosted by Tone.js (https://tonejs.github.io/audio/salamander/),
+13 notes C3-C6, one every minor third. Changed from the original: the left
+channel only, converted to 48 kHz mono 16-bit WAV, peak-normalised to -3 dBFS,
+trimmed to 8 s with a 0.5 s fade-out, renamed n<midi>.wav.

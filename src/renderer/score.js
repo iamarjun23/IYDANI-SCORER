@@ -1,7 +1,7 @@
 // Score mutations. Every public function here pushes a history snapshot
 // first, then mutates state, then re-renders.
 
-import { state, toneOn } from './state.js';
+import { state } from './state.js';
 import {
   BPM, DOT_MULT, ENTRY_BEAT_MS, HOLD_CAP_BEATS, HOLD_TICK_UNITS, SOUND, REST_MAP,
   SVARAS, beatSeconds,
@@ -10,7 +10,7 @@ import {
 } from './config.js';
 import { pushHist, updateUndoButtons } from './history.js';
 import { pluck, freqOf } from './audio.js';
-import { render, padRests, glyphFor } from './notation.js';
+import { render, renderSoon, padRests, glyphFor } from './notation.js';
 import { newBarId, repeatPairs } from './repeat-model.js';
 import { lessonKey } from './lesson.js';
 
@@ -60,17 +60,6 @@ const beatMs = () => beatSeconds(state.bpm) * 1000;
 // there is one.
 const entryBeatMs = () => (state.metroOn ? beatMs() : ENTRY_BEAT_MS);
 
-// Is a beat being SOUNDED? Then the clicks, and not any clock, are what a hold
-// is measured against: each one a key is still down through is one more beat of
-// value, so the faster the metronome the sooner a held key reaches a guru. What
-// appears on the staff is then exactly what was counted out loud, which is the
-// whole reason for having the metronome on while writing music in.
-//
-// This is deliberately state.metroOn and not followingClock() or the fill mode:
-// the question is whether the player can HEAR the count they are playing to. A
-// grid nobody can hear is not something to snap to.
-const beatSnapping = () => state.metroOn === true;
-
 const holdTickMs = () => (entryBeatMs() / TIME_UNITS_PER_BEAT) * HOLD_TICK_UNITS;
 const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
@@ -94,12 +83,6 @@ export function addNote(svi, {
   if (state.lesson) {
     if (playSound) pluck(freqOf(semiOf(svi, head), oct));
     lessonKey(svi, head, oct);
-    return null;
-  }
-  // A tone switched off in the sheet's legend is heard and not written. Null
-  // tells the caller there is no note to grow and no key to count as held.
-  if (!toneOn(semiOf(svi, head), oct)) {
-    if (playSound) pluck(freqOf(semiOf(svi, head), oct));
     return null;
   }
   pushHist();
@@ -133,23 +116,25 @@ export function addNote(svi, {
   // note drawn as R1/D1 and played back as R1/D1.
   if (playSound) pluck(freqOf(semiOf(svi, head), oct));
   state.hlIndex = state.notes.length - 1;
-  render();
-  setTimeout(() => { state.hlIndex = null; render(); }, 230);
+  renderSoon();
+  setTimeout(() => { state.hlIndex = null; renderSoon(); }, 230);
   return state.notes.length - 1;
 }
 
-// Change the visual duration of a note already entered by a held key. This
-// deliberately does not create another history entry: one hold is one note.
-export function setNoteSymbol(index, sym, dot = false) {
+// A held key's EXACT length, in dantas. The head is the largest glyph that
+// fits and `dur` is the whole hold, so 11 dantas is drawn bindu + praya + danta
+// (the layout's greedy walk) and plays 11 dantas — nothing is rounded away.
+function setHeldUnits(index, units) {
   const note = state.notes[index];
-  const sd = SOUND[sym];
-  if (!note || note.type !== 'note' || !sd) return;
-  if (note.sym === sym && !!note.dot === !!dot) return;
-  note.sym = sym;
-  note.dot = !!dot;
-  note.dur = sd.dur * (dot ? DOT_MULT : 1);
-  note.deco = sd.deco;
-  render();
+  if (!note || note.type !== 'note') return;
+  const dur = units / TIME_UNITS_PER_BEAT;
+  if (note.dur === dur) return;
+  const g = glyphFor(units);
+  note.sym = g.sym;
+  note.dot = g.dot;
+  note.deco = SOUND[g.sym].deco;
+  note.dur = dur;
+  renderSoon();
 }
 
 // Edit a note's played length from the inspector. Durations are stored in the
@@ -379,7 +364,15 @@ export function removeNote(index) {
 // from playing a piece in: there the timing is the music and 'time' is right,
 // but when you are typing out a scale or a lesson the hold length is noise and
 // having it change the glyph is the thing getting in the way.
-export function startHoldPromotion(index, initialSym = state.sym) {
+//
+// `pressedAt` (and the release handler's `releasedAt`) is the MIDI event's own
+// timestamp. The handler that receives a key shares the main thread with
+// render(), which costs 13-25 ms on a long score, so reading the clock when the
+// handler finally runs measures the frame the key landed in, not the key: at
+// 120bpm a danta is 62.5 ms and that lag alone moved holds across a symbol.
+// Callers with no timestamp (the on-screen piano, the letter keys) pass
+// nothing and are measured at the call, as before.
+export function startHoldPromotion(index, initialSym = state.sym, pressedAt) {
   // Nothing to do in fixed mode. addNote() has ALREADY written the selected
   // symbol, so the note is finished the moment it is entered: no growth
   // record, no clock, and a release handler with nothing to finalize. Note
@@ -401,17 +394,16 @@ export function startHoldPromotion(index, initialSym = state.sym) {
   // metroEntry.idleAt is for silence. `units` is what has already been counted
   // against it, tempo by tempo; the two together are the whole record, and
   // there is deliberately no "started at" — see the release handler.
-  heldPromotions.set(index, { units: 0, subUnits: 0, floorUnits, at: nowMs() });
+  heldPromotions.set(index, { units: 0, floorUnits, at: eventTime(pressedAt) ?? nowMs() });
   // In time mode the note is written as the palette's symbol by addNote() and
   // only corrected on the first tick, so a bindu would flash on the staff for
   // an eighth of a beat before shrinking. Put it on the floor immediately.
   if (floorUnits < Math.round(SOUND[base].dur * TIME_UNITS_PER_BEAT)) {
-    const g = glyphFor(floorUnits);
-    setNoteSymbol(index, g.sym, g.dot);
+    setHeldUnits(index, floorUnits);
   }
   ensureHoldPromotionClock();
 
-  return () => {
+  return (releasedAt) => {
     // FINALIZE on release rather than leaving whatever the last tick set. The
     // clock ticks once a danta, so a tap shorter than one tick never reached
     // advanceHoldPromotions() at all and would keep the symbol addNote() wrote.
@@ -430,64 +422,43 @@ export function startHoldPromotion(index, initialSym = state.sym) {
       // Never negative: advanceHoldPromotions() is exported and a caller may
       // pump time the wall clock has not actually moved through, which would
       // otherwise subtract from what those ticks legitimately counted.
-      const since = Math.max(0, nowMs() - promotion.at);
+      // A release TIMESTAMP may legitimately land before the last tick: the
+      // tick timer and the queued key-up race through the same busy frame, and
+      // when the tick wins it has counted time the key was no longer down for.
+      // That is taken back; the floor below still bounds the result.
+      const end = eventTime(releasedAt);
+      const since = end != null ? end - promotion.at : Math.max(0, nowMs() - promotion.at);
       const elapsed = heldUnits(promotion, since);
       const held = Math.min(
         HOLD_CAP_BEATS * TIME_UNITS_PER_BEAT,
         Math.max(promotion.floorUnits, Math.round(elapsed)),
       );
-      const g = glyphFor(held);
-      setNoteSymbol(index, g.sym, g.dot);
+      setHeldUnits(index, held);
     }
     heldPromotions.delete(index);
     if (!heldPromotions.size && !idleAccruing()) stopHoldClock();
   };
 }
 
-// What a held note is worth RIGHT NOW, in timing units, plus `extraMs` of
-// holding the clock has not been asked about yet.
-//
-// Under the metronome `units` is fed one whole beat at a time by the clicks and
-// by nothing else, so a held note can only be 1, 2, 3 or 4 beats — that is what
-// snapping to the count means, and a value between two clicks is one nobody
-// heard. `subUnits` is the wall clock running underneath, and it is read ONLY
-// while no click has landed yet: a tap that begins and ends between two clicks
-// never earned a beat, so it resolves to the short symbols instead, and it is
-// held below a whole beat because a whole beat is the clicks' to give.
-function heldUnits(promotion, extraMs = 0) {
-  const grown = (extraMs / entryBeatMs()) * TIME_UNITS_PER_BEAT;
-  if (beatSnapping()) {
-    return promotion.units > 0
-      ? promotion.units
-      : Math.min(TIME_UNITS_PER_BEAT - 1, promotion.subUnits + grown);
-  }
-  return promotion.units + grown;
+// A MIDI event's timestamp, when it can be believed: a finite reading of the
+// same clock as nowMs(), not in the future, and no older than a stalled frame
+// explains. Anything else (a device or test stamping 0, a value from another
+// clock) is null and the caller falls back to the clock.
+const EVENT_STALE_MS = 1000;
+function eventTime(at) {
+  const now = nowMs();
+  return Number.isFinite(at) && at <= now && now - at < EVENT_STALE_MS ? at : null;
 }
 
-// One METRONOME BEAT has been heard, and every key still down has just earned
-// it. This is the whole of "the beat is the clock": a hold grows ON the clicks,
-// in whole beats. Between two clicks a held note does not change, because
-// nothing has been counted yet for it to show.
-export function advanceHeldByBeat() {
-  if (!heldPromotions.size || !beatSnapping()) return;
-  const capUnits = HOLD_CAP_BEATS * TIME_UNITS_PER_BEAT;
-  heldPromotions.forEach((promotion, index) => {
-    promotion.units += TIME_UNITS_PER_BEAT;
-    // The sub-beat measure is spent. It only ever answers for a tap that ended
-    // before the first click, and a click has now landed.
-    promotion.subUnits = 0;
-    const held = Math.min(capUnits, Math.max(promotion.floorUnits, promotion.units));
-    const g = glyphFor(held);
-    setNoteSymbol(index, g.sym, g.dot);
-    if (held >= capUnits) heldPromotions.delete(index);
-  });
-  if (!heldPromotions.size && !idleAccruing()) stopHoldClock();
+// What a held note is worth RIGHT NOW, in timing units, plus `extraMs` of
+// holding the clock has not been asked about yet. Measured in dantas whether
+// or not the metronome is on — the metronome only sets how long a danta is.
+function heldUnits(promotion, extraMs = 0) {
+  return promotion.units + (extraMs / entryBeatMs()) * TIME_UNITS_PER_BEAT;
 }
 
 // `dtMs` of holding has elapsed. Each held note is rewritten as the largest
-// single glyph its elapsed time has actually reached, chukkis included — so a
-// hold through 3 beats lands on guru + chukki (2 + 1) rather than rounding back
-// to a plain guru or running on to Maguru.
+// exact number of dantas it has been down for — see setHeldUnits().
 //
 // Because the tick is one danta rather than one beat, the short values are
 // reachable too: from the danta floor the run is danta, praya, praya•, vasu,
@@ -498,16 +469,10 @@ export function advanceHeldByBeat() {
 // to keep the staff honest WHILE a key is down; it is not the last word.
 export function advanceHoldPromotions(dtMs = entryBeatMs()) {
   const capUnits = HOLD_CAP_BEATS * TIME_UNITS_PER_BEAT;
-  const snap = beatSnapping();
   const grown = (dtMs / entryBeatMs()) * TIME_UNITS_PER_BEAT;
 
   heldPromotions.forEach((promotion, index) => {
-    // Under the metronome the clicks own the whole beats and this clock keeps
-    // only the sub-beat measure a tap released before the first click resolves
-    // against. It must not add to `units` as well, or every beat would be
-    // counted twice — once when it went by and once when it was heard.
-    if (snap) promotion.subUnits += grown;
-    else promotion.units += grown;
+    promotion.units += grown;
     // Advanced by the interval that was just COUNTED, not set to nowMs(): the
     // dt is the caller's measurement, and the release handler adds only what
     // has gone by since. Setting it from the clock would double-count for any
@@ -517,8 +482,7 @@ export function advanceHoldPromotions(dtMs = entryBeatMs()) {
       capUnits,
       Math.max(promotion.floorUnits, Math.floor(heldUnits(promotion) + 1e-9)),
     );
-    const g = glyphFor(held);
-    setNoteSymbol(index, g.sym, g.dot);
+    setHeldUnits(index, held);
     if (held >= capUnits) heldPromotions.delete(index);
   });
 
@@ -680,13 +644,6 @@ function usedInBeat() {
 // note, writing the same beat-aligned silence padRests() derives in 'auto':
 // finish the beat the note stopped inside, then one bindu rest per beat.
 export function onMetronomeTick() {
-  // A beat has been HEARD, so every key still down has just earned one — see
-  // advanceHeldByBeat(). It runs before anything below because it has nothing
-  // to do with the fill mode: whether silence is written for you is one
-  // question, and what the count is worth to a key you are holding is another.
-  // The danta clock stands down from whole beats while this is running, so the
-  // two cannot both count the same beat.
-  advanceHeldByBeat();
   if (state.fill !== 'metro' || state.lesson) return;
   if (!state.metroOn || !metroEntry.armed || keyIsHeld()) return;
   // The tick no longer COUNTS the silence — it only asks the clock how much has

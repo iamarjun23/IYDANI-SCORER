@@ -1,17 +1,16 @@
 // Document tabs across the top of the editor. Each tab holds a snapshot
 // of (notes, bars, title, preset, tala) and is swapped in/out of `state`.
 
+import { BPM } from './config.js';
 import { state, docs, getActiveDoc, setActiveDoc } from './state.js';
 import { updateUndoButtons } from './history.js';
 import { render } from './notation.js';
-import { scaleTones, tonesFrom } from './config.js';
 
 export function saveDoc() {
   docs[getActiveDoc()] = {
     notes: state.notes,
     bars: state.bars,
     breaks: state.breaks,
-    tones: state.tones,
     // Which break the user was last working on — a box ordinal is only
     // meaningful against the document it was counted in, so it is stored per
     // tab rather than left standing when another document is swapped in.
@@ -48,13 +47,12 @@ export function loadDoc(i) {
   state.notes = d.notes;
   state.bars = d.bars;
   state.breaks = d.breaks || [];
-  state.tones = d.tones = tonesFrom(d.tones, d.notes.length > 0);
   state.lastBreak = d.lastBreak ?? null;
   state.title = d.title;
   state.file = d.file || '';
   state.preset = d.preset;
   state.tala = d.tala;
-  state.bpm = d.bpm || 72;
+  state.bpm = d.bpm || BPM;
   state.hist = [];
   state.future = [];
   // A lesson belongs to the tab it was opened in; cowork.js sets it again
@@ -66,14 +64,13 @@ export function loadDoc(i) {
   // tala line is refreshed via the same render path
   const ev = new Event('tala:changed');
   document.dispatchEvent(ev);
-  document.dispatchEvent(new Event('tones:changed'));
   render();
   buildTabs();
 }
 
 export function newDoc() {
   saveDoc();
-  docs.push({ notes: [], bars: [], breaks: [], tones: scaleTones(), lastBreak: null, title: 'Untitled', preset: null, tala: state.tala, bpm: 72 });
+  docs.push({ notes: [], bars: [], breaks: [], lastBreak: null, title: 'Untitled', preset: null, tala: state.tala, bpm: BPM });
   loadDoc(docs.length - 1);
 }
 

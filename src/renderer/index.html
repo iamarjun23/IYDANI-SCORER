@@ -283,6 +283,22 @@
       box-shadow: 0 0 5px #d8513a
     }
 
+    /* The update chip (updater-ui.js). Dressed like the Online pill; it only
+       exists while an update is downloading or waiting to be installed. */
+    .upd-chip { cursor: default; font-family: inherit; white-space: nowrap; flex-shrink: 0 }
+    .upd-chip[hidden] { display: none }
+    .upd-chip svg { width: 14px; height: 14px }
+    .upd-bar { width: 40px; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden }
+    .upd-bar i { display: block; height: 100%; width: 0; background: var(--ink-2); transition: width .3s }
+    .upd-chip[data-state="ready"] { cursor: pointer; background: var(--accent-soft); color: var(--accent); border-color: var(--accent) }
+    .upd-chip[data-state="ready"] .upd-bar { display: none }
+    .upd-chip[data-state="ready"]:hover { background: var(--hover) }
+    #pop .upd-pop { padding: 8px 10px; width: 250px }
+    #pop .upd-pop b { display: block; font-size: 13px; color: var(--ink) }
+    #pop .upd-pop p { margin: 4px 0 10px; font-size: 12px; color: var(--ink-2); line-height: 1.45 }
+    #pop .upd-pop .row { display: flex; justify-content: flex-end; gap: 8px }
+    #pop .upd-pop small { display: block; margin-top: 8px; font-size: 11px; color: var(--ink-3) }
+
 
     /* Wraps rather than clips: a control pushed past the right edge of a
        narrow window was unreachable, not merely hidden. The rules under
@@ -656,6 +672,61 @@
       background: var(--panel);
       border-left: 1px solid var(--border);
       overflow-y: auto
+    }
+
+    /* Minimized, the rail is a strip with the title running down it; the
+       stage takes the room, and fitPage() re-fits on the resize event the
+       toggle fires. */
+    .work.rail-min {
+      grid-template-columns: 176px minmax(0, 1fr) 30px
+    }
+
+    .inspect-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between
+    }
+
+    #railToggle {
+      border: 0;
+      background: none;
+      color: var(--ink-3);
+      padding: 2px;
+      cursor: pointer;
+      display: flex
+    }
+
+    #railToggle:hover {
+      color: var(--ink)
+    }
+
+    #railToggle svg {
+      width: 14px;
+      height: 14px
+    }
+
+    .rail-min .inspect {
+      overflow: hidden;
+      cursor: pointer
+    }
+
+    .rail-min #inspectBody {
+      display: none
+    }
+
+    .rail-min .inspect-title {
+      flex-direction: column-reverse;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 9px 0
+    }
+
+    .rail-min .inspect-title span {
+      writing-mode: vertical-rl
+    }
+
+    .rail-min #railToggle svg {
+      transform: rotate(180deg)
     }
 
     .iempty {
@@ -1854,6 +1925,7 @@
     }
 
     table.tones {
+      flex: 0 0 auto;
       border-collapse: collapse;
       background: #fdf5c4
     }
@@ -1869,75 +1941,8 @@
     }
 
     table.tones .mk {
-      height: 23px;
-      cursor: pointer
+      height: 23px
     }
-
-    /* A tone switched off for this sthayi: a blank white cell. */
-    table.tones .mk.off {
-      background: #fff
-    }
-
-    table.tones .mk.off > * {
-      visibility: hidden
-    }
-
-    .tones-wrap {
-      position: relative;
-      flex: 0 0 auto
-    }
-
-    /* Beside S and beside N, at the height of the letter row — which is above
-       the head rule, so the rule is not interrupted. No background, for the
-       same reason. */
-    .tone-nav {
-      position: absolute;
-      top: 0;
-      height: 24px;
-      padding: 0 4px;
-      border: 0;
-      background: none;
-      color: #111;
-      font-size: 11px;
-      line-height: 24px;
-      cursor: pointer
-    }
-
-    .tone-nav.prev {
-      right: 100%
-    }
-
-    .tone-nav.next {
-      left: 100%
-    }
-
-    .tone-nav:disabled {
-      opacity: .2;
-      cursor: default
-    }
-
-    /* Which sthayi the legend is showing. Screen only, like the arrows. */
-    .tone-name {
-      position: absolute;
-      bottom: 100%;
-      left: 0;
-      right: 0;
-      padding-bottom: 3px;
-      text-align: center;
-      font: 700 11px Arial;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      color: #111
-    }
-
-    /* A key whose tone the legend has switched off: it sounds, writes nothing. */
-    .piano-keys .toneoff .sv {
-      font-weight: 400;
-      text-decoration: line-through
-    }
-
-    .piano-keys .wkey.toneoff .sv { color: #b4b4b8 }
-    .piano-keys .bkey.toneoff .sv { color: #888 }
 
     .mk-o {
       display: inline-block;
@@ -3947,8 +3952,6 @@
       .tools,
       .dock,
       .kbmap,
-      .tone-nav,
-      .tone-name,
       .pgend {
         display: none !important
       }
@@ -4004,6 +4007,9 @@
       <button class="m" data-menu="View" data-i18n="View">View</button><button class="m" data-menu="Plugins" data-i18n="Plugins">Plugins</button>
       <button class="m" data-menu="Help" data-i18n="Help">Help</button>
       <div class="grow"></div>
+      <button class="net-status upd-chip" id="updChip" hidden><svg viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="1.9"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></svg><span
+          class="upd-text">Update</span><span class="upd-bar"><i></i></span></button>
       <div class="net-status" id="netStatus" title="Connection status"><span class="net-dot"></span><span
           class="net-text">Online</span></div>
       <button class="mbtn accent" id="coworkBtn" title="Collaborate live"><svg viewBox="0 0 24 24" fill="none"
@@ -4100,8 +4106,11 @@
         <button class="ico" id="bStart" title="To start"><svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M7 5h2v14H7zM20 5v14l-9-7z" />
           </svg></button>
-        <button class="ico" id="playBtn" title="Play (Space)"><svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
+        <button class="ico" id="playBtn" title="Play / Pause (Space)"><svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
             <path d="M8 5v14l11-7z" />
+          </svg></button>
+        <button class="ico" id="bPart" title="Play selected part (Shift+Space) — click a division, Shift+click another to extend"><svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 5h2v14H3zM19 5h2v14h-2zM8 7v10l8-5z" />
           </svg></button>
         <button class="ico" id="bStop" title="Stop"><svg viewBox="0 0 24 24" fill="currentColor">
             <rect x="6" y="6" width="12" height="12" rx="1.5" />
@@ -4112,6 +4121,10 @@
             <path d="M12 17V8l4-3" />
           </svg></button>
       </div>
+      <!-- Options filled in by installInstruments() from the INSTRUMENTS table. -->
+      <label class="sa-picker" title="Instrument the notes play on">
+        <select id="instrument" aria-label="Instrument"></select>
+      </label>
       <!-- Options filled in by installMetronomeSounds() from the SOUNDS table. -->
       <label class="sa-picker" title="Metronome sound">
         <select id="metroSound" aria-label="Metronome sound"></select>
@@ -4119,7 +4132,7 @@
       <div class="bpm-ctl" title="Playback tempo">
         <span class="bpm-label">BPM</span>
         <button id="bpmDown" title="Decrease tempo">−</button>
-        <input id="bpmVal" type="number" inputmode="numeric" value="72" min="20" max="240" step="1" />
+        <input id="bpmVal" type="number" inputmode="numeric" value="60" min="20" max="240" step="1" />
         <button id="bpmUp" title="Increase tempo">+</button>
       </div>
       <!-- Says which metre is in force; updateTalaLine() fills the label. -->
@@ -4235,15 +4248,7 @@
                      because the legend states the scale and T.S. states the
                      metre. -->
                 <span class="headrule"></span>
-                <!-- The arrows step the legend between the three sthayis.
-                     Screen only: they hang outside the table, above the rule,
-                     so the rule still runs unbroken into the table's edge. -->
-                <div class="tones-wrap">
-                  <button class="tone-nav prev" id="tonePrev" type="button" title="Lower sthayi" aria-label="Lower sthayi">&#9664;</button>
-                  <span class="tone-name" id="toneName" data-i18n="Madhya">Madhya</span>
-                  <table class="tones" id="tonesTable"></table>
-                  <button class="tone-nav next" id="toneNext" type="button" title="Higher sthayi" aria-label="Higher sthayi">&#9654;</button>
-                </div>
+                <table class="tones" id="tonesTable"></table>
               </div>
               <!-- The four fields the printed sheet carries under its header:
                    what the piece is on the left, what it is played in on the
@@ -4254,7 +4259,7 @@
                 <div class="metaline"><span class="lab">Title :</span><span class="val" id="titleVal"
                     contenteditable="true">SARALE VARASE</span></div>
                 <div class="metaline right"><span class="lab">K.S. :</span><span class="val" id="ksVal">C</span></div>
-                <div class="metaline"><span class="lab">Tempo :</span><span class="val" id="tempoVal">72</span></div>
+                <div class="metaline"><span class="lab">Tempo :</span><span class="val" id="tempoVal">60</span></div>
                 <div class="metaline right"><span class="lab">T.S. :</span><span class="val" id="tsVal">4/4</span></div>
               </div>
               <div class="score-rows" id="score"></div>
@@ -4266,7 +4271,10 @@
       </main>
 
       <aside class="inspect">
-        <div class="tools-title" data-i18n="Section">Section</div>
+        <div class="tools-title inspect-title"><span data-i18n="Section">Section</span>
+          <button id="railToggle" type="button" title="Minimize the section panel" aria-expanded="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 6l6 6-6 6" />
+            </svg></button></div>
         <div id="inspectBody"></div>
       </aside>
     </div>

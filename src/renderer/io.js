@@ -41,8 +41,6 @@ export function scoreData() {
     bars:  score.bars,
     // Layout, not music: the divisions the sheet is broken at.
     breaks: state.breaks,
-    // Which tones the legend has switched on, per sthayi.
-    tones: state.tones,
     // The keyboard layout the score was written on.
     keyBinds: binds(),
   };

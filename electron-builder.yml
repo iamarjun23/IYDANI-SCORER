@@ -83,11 +83,12 @@ dmg:
       type: link
       path: /Applications
 
-# Windows' own channel — unchanged from before mac support was added, so
-# already-installed clients keep resolving updates at the same path.
+# Windows' channel: GitHub Releases on the (public) repo. The S3 bucket was
+# never deployed, so nothing installed was resolving updates there.
+# releaseType: release — electron-updater ignores drafts, and electron-builder
+# makes a draft by default. Publishing needs GH_TOKEN in the environment.
 publish:
-  provider: s3
-  bucket: iydani-releases
-  region: us-east-1
-  path: /releases/win
-  acl: public-read
+  provider: github
+  owner: iamarjun23
+  repo: IYDANI-SCORER
+  releaseType: release

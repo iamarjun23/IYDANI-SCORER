@@ -17,7 +17,7 @@ export const BRAND_LOCKUP = './brand/iydani-lockup.png';
 // ---------- Music-domain constants ----------
 
 export const SA_FREQ = 261.63;
-export const BPM = 72;
+export const BPM = 60;
 
 // How long one beat lasts, in seconds — the single answer to "what is the
 // tempo", used by the playback transport, the metronome and the hold-promotion
@@ -159,70 +159,88 @@ export function semiOf(svaraIndex, head) {
   return isFilled(svaraIndex, head) && tone.variant != null ? tone.variant : tone.natural;
 }
 
-// ---------- Which tones a score uses ----------
+// ---------- Instruments: the recorded note samples ----------
 //
-// The sheet's tone legend is a switch per tone, per sthayi: three rows of
-// twelve, indexed [oct + 1][semi]. A tone switched off is blank in the legend
-// and is heard but not written (see toneOn() in state.js and addNote()).
+// Which recordings the notes are played on is a PREFERENCE (`instrument` in
+// settings.js), picked from the toolbar. Each entry below is everything that
+// differs from one set to the next, so adding a set is a folder of
+// n<midi>.wav files plus one row here:
 //
-// A new score starts on the scale's own seven — SVARAS' reading of each
-// ladder position — so the legend opens saying what the plain keys write.
-export const scaleTones = () => [0, 1, 2].map(() =>
-  Array.from({ length: 12 }, (_, semi) => SVARAS.slice(0, 7).some(s => s.semi === semi)));
-
-// A stored selection, made safe to index. A score from before the selection
-// existed has none: one holding music keeps all twelve, so nothing already
-// written is a tone its own legend refuses, and a blank one takes the scale.
-export function tonesFrom(saved, hasNotes) {
-  if (!Array.isArray(saved) || saved.length !== 3) {
-    return hasNotes ? [0, 1, 2].map(() => new Array(12).fill(true)) : scaleTones();
-  }
-  return saved.map(row => Array.from({ length: 12 }, (_, i) => !row || row[i] !== false));
-}
-
-// ---------- Recorded note samples ----------
+//   dir     the folder under renderer/samples/, served over the app's own
+//           `dng:` scheme (see src/main.js) because Chromium will not fetch
+//           file:// URLs from a file:// page
+//   cents   how far each recording is off A=440, MEASURED by
+//           tests/audio.test.mjs's autocorrelation — its keys are the notes
+//           the set has. Corrected on playbackRate per recording, so a stray
+//           one (the Steinway's D4 is +20) is fixed without moving the rest.
+//           A replaced file that no longer matches its row fails that test.
+//   attack  how long a note fades in, s (never more than half a short note)
+//   toneHz  a lowpass on the notes' master bus, 0 = off (the metronome does
+//           not go through it)
+//   fadeAt  when a sounding voice is taken down to silence, s — see
+//           HELD_FADE_T
 //
-// Named by the MIDI note they sound, so nothing has to parse a filename. Two
-// octaves exist — C3-B3 (48-59) and C5-B5 (72-83). The middle octave was never
-// recorded; audio.js covers it by shifting the nearest sample, which is at most
-// 6 semitones away. Drop n60..n71.wav in here and add them to this list and the
-// shifting stops by itself.
-//
-// They are served over the app's own `dng:` scheme (see src/main.js) because
-// Chromium will not fetch file:// URLs from a file:// page.
-export const SAMPLE_MIDI = [
-  48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59,
-  72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83,
+// Every file is 48 kHz mono 16-bit, peak -3 dBFS, named by the MIDI note it
+// sounds. The two pianos are trimmed to 8 s with a 0.5 s fade, and are ONE
+// channel of the stereo original, not a mix: both were recorded on spaced
+// microphones whose channels run up to -0.85 out of phase, and the mix
+// cancelled part of every note, which made them hollow.
+export const INSTRUMENTS = [
+  {
+    // The app's own recordings: 24 plucked strikes, C3-B3 and C5-B5. The middle
+    // octave was never recorded and is shifted from up to 6 semitones away.
+    // Each strike starts hard and bright and dies inside a second, reported
+    // from the field as "thap thap" and a metallic "tan" on every note; the
+    // 80 ms fade-in and 1500 Hz lowpass soften it (picked by ear from A/B
+    // renders), and fadeAt 0.5 takes away the residue each one sits on.
+    id: 'original', name: 'Original', dir: 'original',
+    cents: { 48: 1.3, 49: 6.4, 50: 5.4, 51: 6.6, 52: 4.2, 53: 2.5, 54: 8.8, 55: 3.8, 56: 6.7, 57: 8.8, 58: 9.7, 59: 7.6,
+      72: 5.5, 73: 8.0, 74: 4.0, 75: 1.9, 76: 6.5, 77: 8.8, 78: 4.0, 79: 4.8, 80: 4.1, 81: 9.6, 82: 6.5, 83: 4.6 },
+    attack: 0.08, toneHz: 1500, fadeAt: 0.5,
+  },
+  {
+    // Salamander Grand Piano, a Yamaha C5 (Alexander Holm, CC-BY 3.0 — the
+    // credit is samples/salamander/CREDITS.txt), one note every minor third
+    // C3-C6 from the subset Tone.js hosts. A piano's hammer IS its attack, so
+    // the pianos take only a 10 ms fade-in and no filter, and they decay by
+    // themselves, so the fade only meets a key held past 6 s.
+    id: 'salamander', name: 'Grand piano (Yamaha)', dir: 'salamander',
+    cents: { 48: -2.8, 51: 3.6, 54: 1.2, 57: 5.6, 60: 4.6, 63: 8.4, 66: 3.0, 69: 7.2, 72: 9.9, 75: 13.0, 78: 4.8, 81: 8.0, 84: 8.0 },
+    attack: 0.01, toneHz: 0, fadeAt: 6,
+  },
+  {
+    // Splendid Grand Piano, a Steinway Akai released into the public domain
+    // (github.com/sfzinstruments/SplendidGrandPiano). The mezzo-forte layer,
+    // a recording every one or two semitones C3-C#6, so nothing is shifted
+    // more than one. Clearer and crisper than the Yamaha.
+    id: 'steinway', name: 'Grand piano (Steinway)', dir: 'steinway',
+    cents: { 48: 10.4, 50: 13.8, 52: 9.6, 53: 10.6, 55: 8.5, 56: 12.2, 57: 12.2, 58: 12.6, 59: 13.6, 60: 9.5, 62: 10.0,
+      64: 9.1, 65: 11.7, 67: 8.5, 69: 11.8, 71: 9.6, 72: 6.2, 74: 20.3, 76: 6.1, 77: 10.5, 79: 7.0, 80: 7.1, 81: 7.2,
+      82: 8.8, 83: 6.2, 85: 7.3 },
+    attack: 0.01, toneHz: 0, fadeAt: 6,
+  },
 ];
-export const SAMPLE_URL = midi => `dng://samples/n${midi}.wav`;
 
-// The recordings peaked between 0.07 and 0.19 and were peak-normalised to
-// -3 dBFS on conversion, so this is just the playback trim.
+// What a new install opens on, and what an unknown saved id falls back to.
+// The Steinway, at the user's choice; the original set is one click away.
+export const DEFAULT_INSTRUMENT = 'steinway';
+export const instrumentById = id => INSTRUMENTS.find(i => i.id === id) || INSTRUMENTS.find(i => i.id === DEFAULT_INSTRUMENT);
+export const sampleUrl = (inst, midi) => `dng://samples/${inst.dir}/n${midi}.wav`;
+
+// Every file is peak-normalised to -3 dBFS on conversion, so this is just the
+// playback trim.
 export const SAMPLE_GAIN = 0.55;
 
 // ---------- Concert pitch ----------
 //
-// The recordings are not at A=440. Measured across all 24 by autocorrelation,
-// every one of them is SHARP — +1.5 to +9.5 cents, mean +5.7 — which puts the
-// instrument they were played on at about A=441.4. The error is even across
-// the set, which is why it stood for so long: a sample set only ever heard
-// against itself is in tune with itself, and 6 cents is inaudible on its own.
-//
-// It is not inaudible against a LIVE keyboard. Playing along with an
-// instrument at A=440, 5.7 cents at middle C is a ~0.9 Hz beat — the slow
-// wobble that reads as "these two do not match" on any held note.
-//
-// Correcting it HERE rather than by re-rendering the wavs keeps the files as
-// the untouched originals, means a replacement sample cannot quietly
-// reintroduce the offset, and leaves the correction where it can be read.
-// It rides on playbackRate ONLY — which recording plays is still chosen from
-// the note's true pitch, so nearestSample() is unaffected.
-//
-// tests/audio.test.mjs measures the shipped set through this constant, so a
-// re-recorded set that is already at A=440 fails here rather than quietly
-// playing 6 cents flat.
-export const SAMPLE_DETUNE_CENTS = -5.7;
-export const SAMPLE_DETUNE = Math.pow(2, SAMPLE_DETUNE_CENTS / 1200);
+// No recording here is at A=440. The original set is +1.3 to +9.7 cents, the
+// Steinway +6 to +20. It is inaudible against the set itself — a sample set
+// only ever heard against itself is in tune with itself — and NOT inaudible
+// against a LIVE keyboard: 6 cents at middle C is a ~0.9 Hz beat, the slow
+// wobble that reads as "these two do not match" on any held note. So each
+// recording is pulled onto concert pitch by its own `cents` entry, on
+// playbackRate only; which recording plays is still chosen from the note's
+// true pitch, so nearestSample() is unaffected.
 
 // ---- sustain ----
 //
@@ -272,16 +290,11 @@ export const SAMPLE_LOOP_MIN = 0.12;
 // long enough that no real hold reaches it.
 export const SAMPLE_SUSTAIN_MAX = 30;
 
-// A held key plays the recording once, and the recordings do not finish dying.
-// Measured: the body falls 25-35 dB inside the first second and then a residue
-// SITS — n59 flat at -36 dB for 0.8 s, n72 at -37 — with the low octave's
-// 2.5-4 kHz partials holding level under it, until the file's own fade cuts it
-// off. Those two files serve all of madhya, so every key on the default
-// keyboard ended on it: a small stationary buzz after the note. From
-// HELD_FADE_AT the held voice is therefore taken on down to silence, time
-// constant HELD_FADE_T, so the tail keeps falling instead of settling. Set by
-// measurement, not by ear — these two are the knob if a hold dies too soon.
-export const HELD_FADE_AT = 0.5;
+// From an instrument's `fadeAt` a voice is taken on down to silence, with this
+// time constant. The original set needs it at 0.5 s: its recordings do not
+// finish dying — a residue SITS at about -36 dB until the file's own fade,
+// heard as a small buzz after every note. The pianos decay by themselves over
+// their 8 s, so for them the fade only meets a key held past 6 s.
 export const HELD_FADE_T = 0.6;
 
 // ---- what a HELD note does after the loop takes over ----
@@ -373,29 +386,37 @@ export const SUSTAIN_TONE_TO_RATIO = 2.2;
 
 // ---------- How long a struck note is heard ----------
 //
-// A note's written value says when the NEXT symbol begins, not when this one
-// is silenced. These are recordings of a struck instrument: the string keeps
-// ringing under whatever follows it, and that ring is what makes a line read
-// as one phrase instead of a row of separate blips. Playback therefore lets a
-// note ring on for up to RING_SECONDS past its written value.
+// A played note is HELD for its whole written value and released AFTER it,
+// over a short tail that crossfades into the next note's attack — legato.
 //
-// That ring is a RELEASE, not a second hold. It used to be a hold, and could
-// safely be one while the recordings were decaying underneath it and had gone
-// quiet by the time it ended. They no longer decay — see SAMPLE_LOOP_AT — so a
-// held ring would keep a note at full level for twice its written value and run
-// every note in a line into the next. Same total length, second half now a
-// decay.
+// Two rules were tried before this and each was reported from the field. A
+// ring carried 0.5–0.9 s past the written end ran every danta and praya into
+// the ones after it, so a run read as rushed and blurred. Carving the release
+// out of the note's OWN length instead left every note faded to dead silence
+// (measured −70 to −86 dB) 20–40 ms before the next onset, so a melody played
+// as a string of separate "thap thap" strikes rather than as a line.
 //
-// Cutting each note at its own written value — which is what a 0.92 factor
-// used to do — leaves a gap before every single onset. At 96 bpm a praya is
-// 0.156s, so every note was a 0.14s blip that was then actively muted while
-// the recording still had two seconds of decay left in it.
-//
-// It is a CEILING, not a fixed tail: ringLength() never lets the ring outlast
-// the note itself. Slow values are unaffected — a bindu is already longer than
-// this — but a run of praya or danta, which is what an imported melody is made
-// of, would otherwise keep eight voices ringing at once and smear the line.
-export const RING_SECONDS = 0.9;
+// So the tail is as long as the note itself (RELEASE_SHARE 1), never more than
+// RELEASE_MAX_SECONDS. A danta at 72 bpm (0.104 s) fades over 0.104 s into the
+// next note, in a straight line, so it stays near full while the next note
+// fades in (an exponential tail dipped ~9 dB at every note change). Half the
+// note, capped at 0.15 s, was tried first and still reported as too choppy. A
+// repeated pitch crossfades into itself over the new note's fade-in, in
+// damp(). A released live key
+// fades over RING_MIN_SECONDS. These are the knobs if notes sound too dry
+// (raise them) or smeared (lower them).
+export const RING_MIN_SECONDS = 0.5;
+export const RELEASE_SHARE = 1;
+export const RELEASE_MAX_SECONDS = 0.4;
+
+// The output buffer the AudioContext asks for. The default ('interactive')
+// takes Windows' shared-mode path: measured here, 42 ms from a key going down
+// to it being heard, which is what a fast player reports as the sound lagging
+// the finger. 0 asks for the smallest buffer the device allows — 11 ms on the
+// same machine (2.7 ms base + the device). The cost is headroom: on a slow
+// machine a tiny buffer can crackle under load. If it does, 0.003 measured
+// 26 ms and 'interactive' puts it back.
+export const AUDIO_LATENCY_HINT = 0;
 
 export const SCRIPTS = {
   en: ['Sa', 'Ri', 'Ga', 'Ma', 'Pa', 'Da', 'Ni', 'Sá'],
@@ -485,23 +506,27 @@ export const DOTTABLE = ['Maguru', 'guru', 'bindu', 'vasu', 'praya'];
 // the sub-beat symbols and the small chukkis unreachable by holding at all.
 // The clock is its own, independent of the metronome, because a metronome tick
 // cannot subdivide a beat. What that clock MEASURES against, though, is the
-// metronome whenever one is running — see beatSnapping() in score.js.
+// metronome whenever one is running — see entryBeatMs() in score.js.
 export const HOLD_TICK_UNITS = 1;
 
 // What one beat is worth when ENTERING music with no metronome running.
 //
 // Not the tempo. With nothing counting, the tempo field is a number on a
-// toolbar: it says a beat is 833ms at the default 72, and asks the player to
-// hold that long with nothing in the room to hold it against. The value that
-// lands is then a surprise, which is the opposite of what holding a key is for.
-// A SECOND is something anybody can hold and can check, so that is the beat
-// when there is no beat — 1s a bindu, 2s a guru, 4s a Maguru. Switch the
-// metronome on and the count is audible, and the clicks take over entirely.
+// toolbar: it asks the player to hold some fraction of a second with nothing
+// in the room to hold it against. The value that lands is then a surprise,
+// which is the opposite of what holding a key is for. A SECOND is something
+// anybody can hold and can check, so that is the beat when there is no beat —
+// 1s a bindu, 2s a guru, 4s a Maguru. Switch the metronome on and the count is
+// audible, and the clicks take over entirely.
+//
+// It is also why the default tempo (BPM) is 60: one beat a second, so Play
+// gives back exactly what was pressed. At 72 it came back 20% fast.
 export const ENTRY_BEAT_MS = 1000;
 
-// Growth stops at Maguru: that is one full box, and anything longer has to be
-// split across a box line anyway.
-export const HOLD_CAP_BEATS = 4;
+// Backstop only, for a key whose release never arrives (a missed MIDI
+// note-off). A real hold of any length is written as held — the layout splits a
+// long note across box lines with a join. Same ceiling as setNoteDuration().
+export const HOLD_CAP_BEATS = 64;
 
 // The smallest DNG weight is Danta (1/8 beat), so every beat is divided into
 // eight timing units. Keeping weights as integers avoids float drift when

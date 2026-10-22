@@ -1,7 +1,6 @@
 // Mutable application state. Imported as a singleton by every module
 // that needs to read or mutate the current score / UI flags.
 
-import { scaleTones } from './config.js';
 
 export const state = {
   // input mode
@@ -106,9 +105,6 @@ export const state = {
   // Layout only — the music is untouched, so these live beside the score
   // rather than in it.
   breaks: [],
-  // Which tones the score uses, [oct + 1][semi] — the sheet's tone legend.
-  // Per document: it rides in the tab's slice and the saved .json.
-  tones: scaleTones(),
 
   // The break most recently placed or moved, as its box ordinal, or null.
   // A POINTER, not score data: it says where the user was last working, so the
@@ -130,9 +126,15 @@ export const state = {
   hlIndex: null,
   // Playing position in timing units — what the beat highlight follows.
   hlAt: null,
-  bpm: 72,
+  // The divisions selected on the sheet, as {from, to} on the clock, or null.
+  // Play part plays only these. Set by inspector.js.
+  playRange: null,
+  bpm: 60,
   metroOn: false,
   metroSound: 0,
+  // Which recordings the notes are played on — an INSTRUMENTS id (config.js).
+  // A preference, in settings.js, which sets it from DEFAULT_INSTRUMENT.
+  instrument: 'steinway',
 
   // Who fills the silence left in a box. 'auto' derives pad rests at render
   // time; 'metro' records real rests from metronome ticks instead and leaves
@@ -190,13 +192,6 @@ export const docs = [];
 export let activeDoc = 0;
 export function setActiveDoc(i) { activeDoc = i; }
 export function getActiveDoc() { return activeDoc; }
-
-// Is this tone switched on in the legend? Sá (semi 12) is Sa of the sthayi
-// above, and anything outside the three sthayis has no switch and is on.
-export function toneOn(semi, oct) {
-  const row = state.tones[oct + Math.floor(semi / 12) + 1];
-  return !row || row[((semi % 12) + 12) % 12] !== false;
-}
 
 export function snapshot() {
   return JSON.stringify({

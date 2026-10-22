@@ -16,6 +16,7 @@ import {
 import { noteY, stemMetrics, scoreRows } from './notation.js';
 import { boxUnits } from './timesig.js';
 import { setNoteDuration } from './score.js';
+import { setSetting } from './settings.js';
 // The section panel is its own module — it is a piano roll with three drag
 // gestures on it, and it had outgrown living beside the thing that describes a
 // single glyph. What is shared is the vocabulary, and it travels one way only:
@@ -138,12 +139,40 @@ export function installInspector() {
   if (!panel) return;
   panel.innerHTML = EMPTY;
 
+  // Minimize: the rail folds to a strip; clicking anywhere on the strip opens
+  // it again. The resize event is what makes fitPage() re-fit the page.
+  const work = document.querySelector('.work');
+  const toggle = document.getElementById('railToggle');
+  const setMin = min => {
+    work?.classList.toggle('rail-min', min);
+    toggle?.setAttribute('aria-expanded', String(!min));
+    if (toggle) toggle.title = min ? 'Show the section panel' : 'Minimize the section panel';
+    setSetting('railMin', min);
+    window.dispatchEvent(new Event('resize'));
+  };
+  setMin(state.railMin);
+  toggle?.addEventListener('click', e => { e.stopPropagation(); setMin(!state.railMin); });
+  panel.closest('.inspect')?.addEventListener('click', () => { if (state.railMin) setMin(false); });
+
   // Which division is selected, as a position on the CLOCK. Changing a note's
   // length re-renders the whole score and throws these elements away, and it
   // can reflow the boxes as well — so neither an element reference nor a box
   // ordinal survives an edit made from this panel. `at` does, which is what
   // lets the section put itself back instead of blanking after every drag.
   let selAt = null;
+  // Shift+click a second division to select every division between the two.
+  // That span is state.playRange, which Play part (playback.js) plays.
+  let selEnd = null;
+  const syncRange = () => {
+    if (selAt == null) { selEnd = null; state.playRange = null; return; }
+    if (selEnd == null) selEnd = selAt;
+    const from = Math.min(selAt, selEnd), to = Math.max(selAt, selEnd) + boxUnits();
+    state.playRange = { from, to };
+    document.querySelectorAll('#score .section-hit').forEach(s => {
+      const at = Number(s.dataset.boxAt);
+      if (at >= from && at < to) s.classList.add('sel');
+    });
+  };
 
   const clear = () => {
     document.querySelectorAll('#score .glyph.sel')
@@ -175,20 +204,19 @@ export function installInspector() {
     panel.innerHTML = sectionHTML(box, model, cap,
       { prev: atOf(boxes[k - 1]), next: atOf(boxes[k + 1]) });
     wireSection(panel, model, Number(box.at), cap, () => openSection(selAt),
-      to => { clear(); openSection(to); mark(to); });
+      to => { clear(); selEnd = null; openSection(to); syncRange(); });
     if (act) panel.querySelector('[data-act="' + act + '"]')?.focus();
   };
 
-  const mark = at => [...document.querySelectorAll('#score .section-hit')]
-    .find(s => Number(s.dataset.boxAt) === at)?.classList.add('sel');
-
   document.getElementById('score').addEventListener('click', e => {
     const g = e.target.closest('.glyph');
+    const extend = e.shiftKey && selAt != null;
     clear();
     if (g) {
       const at = Number(g.dataset.at);
       const hit = [...document.querySelectorAll('#score .section-hit')]
         .find(s => Number(s.dataset.boxAt) <= at && at < Number(s.dataset.boxAt) + boxUnits());
+      if (hit && extend) { selEnd = Number(hit.dataset.boxAt); syncRange(); return; }
       if (hit) {
         // The note that was clicked is the one the editor opens on.
         selectNote(g.dataset.src === '' ? null : Number(g.dataset.src));
@@ -198,12 +226,15 @@ export function installInspector() {
     }
     if (!g) {
       const section = e.target.closest('.section-hit');
-      if (!section) { selAt = null; panel.innerHTML = EMPTY; return; }
-      section.classList.add('sel');
+      if (!section) { selAt = null; syncRange(); panel.innerHTML = EMPTY; return; }
+      if (extend) { selEnd = Number(section.dataset.boxAt); syncRange(); return; }
+      selEnd = null;
       openSection(section.dataset.boxAt);
+      syncRange();
       return;
     }
     selAt = null;
+    syncRange();
     g.classList.add('sel');
     panel.innerHTML = describeGlyph(g.dataset) + editorFor(g.dataset);
     const apply = panel.querySelector('#inspectApply');
@@ -258,10 +289,9 @@ export function installInspector() {
   // commits until the pointer is released, so rebuilding the block under a
   // moving finger would drop the whole move.
   document.addEventListener('score:rendered', () => {
-    if (selAt == null) { panel.innerHTML = EMPTY; return; }
+    if (selAt == null) { syncRange(); panel.innerHTML = EMPTY; return; }
     if (panel.querySelector('input:focus, select:focus') || sectionBusy()) return;
-    const at = selAt;
-    openSection(at);
-    if (selAt != null) mark(at);
+    openSection(selAt);
+    syncRange();
   });
 }

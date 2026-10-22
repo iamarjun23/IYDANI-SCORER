@@ -395,11 +395,13 @@ function onWebMidiNoteOn(e) {
   // e.note.number is the MIDI note; rawAttack is the 0-127 velocity, which is
   // what the status line reports. WEBMIDI.js has already routed a
   // velocity-zero note-on to onWebMidiNoteOff, so there is no zero case here.
-  noteOn(e.note.number, e.note.rawAttack ?? 100);
+  // e.timestamp is when the message ARRIVED, on the performance.now() clock —
+  // the hold is timed from it rather than from when this handler got to run.
+  noteOn(e.note.number, e.note.rawAttack ?? 100, e.timestamp);
 }
 
 function onWebMidiNoteOff(e) {
-  noteOff(e.note.number);
+  noteOff(e.note.number, e.timestamp);
 }
 
 // ---------- the raw stream ----------
@@ -961,7 +963,7 @@ export function gainForVelocity(velocity) {
   return Math.min(1, GAIN_FLOOR + (1 - GAIN_FLOOR) * Math.pow(v / 64, 1.4));
 }
 
-export function noteOn(midi, velocity = 64) {
+export function noteOn(midi, velocity = 64, at) {
   // A physical key press takes control away from score playback. This keeps
   // the app from continuing to play underneath the musician's live MIDI
   // performance; MIDI transport messages still control the metronome itself.
@@ -971,7 +973,7 @@ export function noteOn(midi, velocity = 64) {
     if (typeof document === 'undefined') state.playing = false;
     else stopPlay();
   }
-  if (held.has(midi)) noteOff(midi);
+  if (held.has(midi)) noteOff(midi, at);
   const sym = state.sym;
   const gain = gainForVelocity(velocity);
 
@@ -1022,6 +1024,8 @@ export function noteOn(midi, velocity = 64) {
   const w = { ...SEMI_TO_WRITTEN[placed.semi], semi: placed.semi, oct: placed.oct };
   // playSound:false — the sustained voice below is the sound. Letting addNote
   // pluck as well double-strikes every note.
+  // Sound FIRST, before any score work, so the key is heard the instant it lands.
+  const voice = keySoundsHere() ? startSustain(freqOf(w.semi, w.oct), gain) : null;
   closeMetronomeSilence();
   // null until this device has proved it has a velocity sensor — addNote()
   // writes no `vel` at all for null, which is what a note with no dynamic to
@@ -1033,8 +1037,7 @@ export function noteOn(midi, velocity = 64) {
   // and lights; there is just no note to grow and no entry to count as held.
   const on = index != null;
   if (on) beginMetronomeEntry();
-  const voice = keySoundsHere() ? startSustain(freqOf(w.semi, w.oct), gain) : null;
-  const stopPromotion = on ? startHoldPromotion(index, sym) : () => {};
+  const stopPromotion = on ? startHoldPromotion(index, sym, at) : () => {};
   held.set(midi, { voice, stopPromotion, semi: w.semi, oct: w.oct, written: on });
   publishHeld();
 
@@ -1083,7 +1086,7 @@ function onControlChange(e) {
   if (e?.controller?.number === 64) setPedal((e.rawValue ?? 0) >= 64);
 }
 
-export function noteOff(midi) {
+export function noteOff(midi, at) {
   const h = held.get(midi);
   if (!h) return;
   held.delete(midi);
@@ -1091,7 +1094,7 @@ export function noteOff(midi) {
   // Unlit on the key coming UP, never on the pedal: CC 64 holds the SOUND on,
   // but the finger has left the key and the picture is of the keyboard.
   highlightDeviceKey(midi, false);
-  h.stopPromotion();
+  h.stopPromotion(at);
   if (h.written) endMetronomeEntry();
   // Under the pedal the voice outlives the key; every other part of the
   // release still happens on time.
@@ -1107,7 +1110,8 @@ export function noteOff(midi) {
 // leaving and the window losing focus all need — a voice parked on the pedal
 // is exactly the kind that would otherwise ring forever.
 export function releaseAll() {
-  [...held.keys()].forEach(noteOff);
+  // Wrapped: forEach would hand noteOff() the array index as a timestamp.
+  [...held.keys()].forEach(m => noteOff(m));
   pedalDown = false;
   pedalVoices.forEach(stopSustain);
   pedalVoices.clear();

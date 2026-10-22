@@ -4,12 +4,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   onsetOffset, buildSustainLoop, freqOfMidi, sustainLevelAt, sustainTone, sustainDecayT,
-  shapeNote,
+  shapeNote, ringLength, damp, currentInstrument,
 } from '../src/renderer/audio.js';
+
+const HELD_FADE_AT = currentInstrument().fadeAt;
 import {
-  SAMPLE_DETUNE, SAMPLE_DETUNE_CENTS, SAMPLE_LOOP_AT, SAMPLE_LOOP_MIN,
+  INSTRUMENTS, SAMPLE_LOOP_AT, SAMPLE_LOOP_MIN,
   SUSTAIN_FLOOR, SUSTAIN_TONE_TO_HZ, SUSTAIN_DECAY_T, SUSTAIN_DECAY_MIN_T,
-  HELD_FADE_AT, HELD_FADE_T,
+  HELD_FADE_T, RING_MIN_SECONDS, SAMPLE_SUSTAIN_LOOP,
 } from '../src/renderer/config.js';
 
 // ---------- onset detection ----------
@@ -36,11 +38,17 @@ assert.ok(Math.abs(onsetOffset(quiet, RATE) - onsetOffset(tone(0.031), RATE)) < 
 
 // ---------- the shipped recordings ----------
 
-// Every sample really does open with silence — this is what the offset exists
-// for. If a re-recorded set ever removes it, the offsets simply come back 0.
+// Every instrument's recordings, as `<dir>/n<midi>.wav`. Every note its
+// `cents` table names must be on disk — the table is also its note list.
 const dir = path.join(import.meta.dirname, '..', 'src', 'renderer', 'samples');
-const wavs = fs.readdirSync(dir).filter(f => f.endsWith('.wav'));
-assert.ok(wavs.length >= 24, 'the sample set is present');
+const wavs = [];
+for (const inst of INSTRUMENTS) {
+  for (const midi of Object.keys(inst.cents)) {
+    const file = `${inst.dir}/n${midi}.wav`;
+    assert.ok(fs.existsSync(path.join(dir, file)), `${file} is present`);
+    wavs.push(file);
+  }
+}
 
 const pcm = (file) => {
   const b = fs.readFileSync(path.join(dir, file));
@@ -69,12 +77,12 @@ for (const file of wavs) {
 
 // ---------- concert pitch ----------
 //
-// The set is ~6 cents SHARP of A=440 — even across all 24, so it is in tune
-// with itself and was inaudible until the app started being played along with
-// a real keyboard. SAMPLE_DETUNE corrects it on playbackRate. This measures
-// the shipped files and checks the correction actually lands them on concert
-// pitch, so a re-recorded set at A=440 fails HERE — as "the constant is now
-// wrong" — instead of quietly playing 6 cents flat.
+// Every set is a few cents SHARP of A=440, in tune with itself and audible
+// only against a real keyboard. Each instrument's `cents` table corrects it
+// per recording on playbackRate. This measures the shipped files and checks
+// the correction lands every one of them on concert pitch, so a replaced
+// recording fails HERE — as "its row is now wrong" — instead of quietly
+// playing off pitch.
 
 // Fundamental by normalised autocorrelation, over a window past the attack.
 // `expected` bounds the lag search (see below) but sets nothing inside it.
@@ -112,25 +120,19 @@ const fundamental = (x, rate, expected) => {
 };
 
 const cents = [];
-for (const file of wavs) {
-  const midi = Number(file.slice(1, -4));
-  const { x, rate } = pcm(file);
-  const target = 440 * Math.pow(2, (midi - 69) / 12);
-  const heard = fundamental(x, rate, target) * SAMPLE_DETUNE;
-  const off = 1200 * Math.log2(heard / target);
-  assert.ok(Math.abs(off) < 8,
-    `${file} plays ${off.toFixed(1)} cents off concert pitch`
-    + ' — the set was re-recorded and SAMPLE_DETUNE no longer describes it');
-  cents.push(off);
+for (const inst of INSTRUMENTS) {
+  for (const [midi, row] of Object.entries(inst.cents)) {
+    const file = `${inst.dir}/n${midi}.wav`;
+    const { x, rate } = pcm(file);
+    const target = 440 * Math.pow(2, (midi - 69) / 12);
+    const heard = fundamental(x, rate, target) * Math.pow(2, -row / 1200);
+    const off = 1200 * Math.log2(heard / target);
+    assert.ok(Math.abs(off) < 1.5,
+      `${file} plays ${off.toFixed(1)} cents off concert pitch`
+      + ` — the recording changed and its ${inst.id} cents entry (${row}) no longer describes it`);
+    cents.push(off);
+  }
 }
-
-// The set is uniform, so correcting it by its mean should centre it. A drift
-// here means the recordings are no longer the ones the constant was measured
-// from.
-const mean = cents.reduce((a, b) => a + b, 0) / cents.length;
-assert.ok(Math.abs(mean) < 3,
-  `the corrected set averages ${mean.toFixed(1)} cents off — re-measure SAMPLE_DETUNE`
-  + ` (currently ${SAMPLE_DETUNE_CENTS})`);
 
 // ---------- the sustain loop ----------
 //
@@ -192,8 +194,10 @@ const rmsOf = (x, from, len) => {
 {
   // And on the shipped set. The numbers are the measured worst cases with a
   // little headroom — a re-recorded set that cannot be looped this cleanly
-  // fails here rather than clicking once a pass in somebody's ear.
-  for (const file of wavs) {
+  // fails here rather than clicking once a pass in somebody's ear. Only while
+  // the loop is ON: the piano sustains by itself, and its C6 (inharmonic, as
+  // high piano strings are) wraps at 0.54, which no voice ever plays.
+  if (SAMPLE_SUSTAIN_LOOP) for (const file of wavs) {
     const midi = Number(file.match(/n(\d+)/)[1]);
     const { x, rate } = pcm(file);
     const loop = buildSustainLoop(x, rate, freqOfMidi(midi));
@@ -285,17 +289,30 @@ assert.equal(sustainDecayT(NaN), SUSTAIN_DECAY_MIN_T, 'a bad length still yields
     };
   };
   const long = record();
-  const done = shapeNote(long, 1, 10, 2);
+  const LONG = HELD_FADE_AT + 2;
+  const done = shapeNote(long, 1, 10, LONG);
   const fade = long.calls.find(c => c[0] === 'target');
   assert.deepEqual(fade.slice(1), [0, 10 + HELD_FADE_AT, HELD_FADE_T], 'a long note fades like a held key');
-  const pin = long.calls.find(c => c[0] === 'set' && c[2] === 12);
-  assert.ok(Math.abs(pin[1] - Math.exp(-(2 - HELD_FADE_AT) / HELD_FADE_T)) < 1e-9,
-    'the release starts from the level the fade reached');
-  assert.ok(done > 12, 'and rings out after its written end');
+  const relAt = 10 + LONG;
+  const pin = long.calls.find(c => c[0] === 'set' && c[2] === relAt);
+  assert.ok(Math.abs(pin[1] - Math.exp(-(relAt - 10 - HELD_FADE_AT) / HELD_FADE_T)) < 1e-9,
+    'the release starts at the written end, from the level the fade reached');
+  assert.equal(done, relAt + ringLength(LONG), 'and rings out over the short tail after it');
   const short = record();
   shapeNote(short, 1, 10, HELD_FADE_AT / 2);
   assert.ok(!short.calls.some(c => c[0] === 'target'), 'a short note is released before any fade is booked');
   assert.equal(short.calls.find(c => c[0] === 'set' && c[2] > 10)[1], 1, 'and from the level it was struck at');
+  // Legato: a note is held at level right up to its written end — no gap of
+  // silence before the next onset, which played a melody as "thap thap" — and
+  // its tail into the next note is short, so a run does not blur.
+  for (const d of [0.104, 0.208, 0.023, 4]) {
+    const r = record();
+    shapeNote(r, 1, 10, d);
+    const pinAt = r.calls.filter(c => c[0] === 'set').at(-1)[2];
+    assert.ok(Math.abs(pinAt - (10 + d)) < 1e-9, `a ${d}s note holds its whole written value`);
+    assert.ok(ringLength(d) <= 0.4 && ringLength(d) <= d + 1e-9, `and its ${d}s tail stays short`);
+  }
+  assert.ok(ringLength(0.104) > 0.02, 'a danta still fades rather than clicks');
 }
 
 // The darkening must never reach down to the note itself. A flat 900 Hz target
@@ -326,6 +343,26 @@ for (const bad of [0, -1, NaN, null, undefined, 'x']) {
   assert.ok(Number.isFinite(from) && Number.isFinite(to), 'a bad pitch still yields a real filter');
 }
 
+// A repeated pitch crossfades out of its previous ring over the new note's
+// fade-in — not cut to silence, which was heard as a "tan" on every repeat.
+// Other pitches and finished voices are left alone.
+{
+  const voice = (at, end) => {
+    const calls = [];
+    return { at, end, calls, node: { stop: t => calls.push(['stop', t]) },
+      g: { gain: { cancelAndHoldAtTime: t => calls.push(['hold', t]), linearRampToValueAtTime: (v, t) => calls.push(['lin', v, t]) } } };
+  };
+  const last = new Map();
+  const a = voice(0, 0.7), b = voice(0.1, 0.8), c = voice(0.2, 0.9), d = voice(5, 5.6);
+  damp(last, 60, a); damp(last, 60, b); damp(last, 62, c); damp(last, 60, d);
+  assert.deepEqual(a.calls[0], ['hold', 0.1], 'same pitch: the earlier voice is held at the new onset');
+  assert.ok(a.calls[1][0] === 'lin' && a.calls[1][1] === 0 && a.calls[1][2] > 0.1 + 0.02,
+    'and fades out over the new note fade-in, not cut');
+  assert.ok(a.calls[2][0] === 'stop' && a.calls[2][1] > 0.1 && a.calls[2][1] < 0.7, 'and stopped soon after it, before its own end');
+  assert.equal(c.calls.length, 0, 'a different pitch is not touched');
+  assert.equal(b.calls.length, 0, 'a voice that has already rung out is not touched');
+}
+
 console.log(`audio tests passed — ${wavs.length} samples within`
   + ` ${Math.max(...cents.map(Math.abs)).toFixed(1)} cents of concert pitch,`
-  + ' every one of them looping cleanly');
+  + (SAMPLE_SUSTAIN_LOOP ? ' every one of them looping cleanly' : ' (sustain loop off)'));

@@ -5,7 +5,7 @@
 // conversion and is pure so it can be tested without a DOM.
 
 import { state } from './state.js';
-import { MIN_BPM, MAX_BPM, TIME_UNITS_PER_BEAT, tonesFrom } from './config.js';
+import { MIN_BPM, MAX_BPM, TIME_UNITS_PER_BEAT } from './config.js';
 import { pushHist } from './history.js';
 import { render, updateSheetMeta } from './notation.js';
 import { midiToScore, noteFor, restsFor } from './midi-import.js';
@@ -15,9 +15,6 @@ function commit(notes, title, bpm) {
   state.notes = notes;
   state.bars = [];
   state.breaks = [];
-  // An imported tune uses whatever tones it uses: all twelve on.
-  state.tones = tonesFrom(null, true);
-  document.dispatchEvent(new Event('tones:changed'));
   state.lastBreak = null;
   state.preset = null;
   // An import replaces the score in this tab; it is no longer the saved file.

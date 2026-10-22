@@ -10,7 +10,7 @@
 //
 // The Tools rail's Octave palette (octGrid) picks which sthayi a click plays in.
 
-import { state, toneOn } from './state.js';
+import { state } from './state.js';
 import { SVARAS, SVARA_TONES, TONE_LETTER, PIANO_RANGE, PIANO_SPANS } from './config.js';
 import {
   resolveDeviceRange, autoOctaveShift, writableWindow, isWritable, noteName,
@@ -217,12 +217,10 @@ function buildMidiKeyboard(keys) {
   // elements dies with them — which would drop the highlight off a key that is
   // still being held. state.midiHeld is midi-input.js's published list.
   const down = new Set(state.midiHeld || []);
-  // Letter struck through when the legend has that tone switched off: it sounds, writes nothing.
-  const offCls = w => (w && !toneOn(w.semi, w.oct) ? ' toneoff' : '');
 
   keys.innerHTML = whites.map(m => {
     const w = writtenFor(m);
-    return `<div class="wkey${w ? '' : ' unmapped'}${offCls(w)}${down.has(m) ? ' playing' : ''}" data-midi="${m}">${face(m)}</div>`;
+    return `<div class="wkey${w ? '' : ' unmapped'}${down.has(m) ? ' playing' : ''}" data-midi="${m}">${face(m)}</div>`;
   }).join('');
 
   notes.filter(m => !isWhiteNote(m)).forEach(m => {
@@ -231,7 +229,7 @@ function buildMidiKeyboard(keys) {
     if (after < 0) return;
     const el = document.createElement('div');
     const w = writtenFor(m);
-    el.className = 'bkey' + (w ? '' : ' unmapped') + offCls(w) + (down.has(m) ? ' playing' : '');
+    el.className = 'bkey' + (w ? '' : ' unmapped') + (down.has(m) ? ' playing' : '');
     el.dataset.midi = m;
     const box = blackKeyBox(after, N, m);
     el.style.width = box.width + '%';
@@ -299,7 +297,7 @@ export function buildPiano() {
     // identical across octaves, so this is what says where one sthayi ends.
     const lbl = semi === 0
       ? `<span class="oct-lbl">${SECTION_LABEL[rungOct(t)]}</span>` : '';
-    return `<div class="wkey${toneOn(semi, rungOct(t)) ? '' : ' toneoff'}" data-semi="${semi}" data-oct="${rungOct(t)}">
+    return `<div class="wkey" data-semi="${semi}" data-oct="${rungOct(t)}">
       <span class="sv">${TONE_LETTER[semi]}</span>${lbl}
     </div>`;
   }).join('');
@@ -310,7 +308,7 @@ export function buildPiano() {
     for (let i = 0; i < N_WHITES; i++) if (whites[i] < t) after = i;
     if (after < 0) return;
     const el = document.createElement('div');
-    el.className = 'bkey' + (toneOn(rungSemi(t), rungOct(t)) ? '' : ' toneoff');
+    el.className = 'bkey';
     el.dataset.semi = rungSemi(t);
     el.dataset.oct = rungOct(t);
     // A black key is a fixed fraction of a white's width whatever the span is,

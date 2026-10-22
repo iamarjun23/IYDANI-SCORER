@@ -3,7 +3,7 @@
 // open document.
 
 import { state, docs, getActiveDoc } from './state.js';
-import { BPM, tonesFrom } from './config.js';
+import { BPM } from './config.js';
 import { render } from './notation.js';
 import { updateUndoButtons } from './history.js';
 import { clearBars } from './score.js';
@@ -29,6 +29,7 @@ import { installBreakTool } from './breaks.js';
 import { installRepeatTool } from './repeats.js';
 import { loadTalas, registerTala, allTalas } from './timesig.js';
 import { loadSettings } from './settings.js';
+import { setInstrument } from './audio.js';
 import { wireTimeSigDialog } from './timesig-ui.js';
 import { shortcutLabel } from './platform.js';
 import { installMidiUI } from './midi-input.js';
@@ -114,7 +115,6 @@ function seedFirstDoc() {
     notes: state.notes,
     bars: state.bars,
     breaks: state.breaks,
-    tones: state.tones,
     lastBreak: state.lastBreak,
     title: state.title,
     preset: state.preset,
@@ -152,8 +152,6 @@ function initFileLoader() {
         state.notes = data.notes || [];
         state.bars = data.bars || [];
         state.breaks = data.breaks || [];
-        state.tones = tonesFrom(data.tones, state.notes.length > 0);
-        document.dispatchEvent(new Event('tones:changed'));
         // A file does not carry where somebody was editing it, so the pointer
         // starts clear on the score that has just been opened.
         state.lastBreak = null;
@@ -220,6 +218,9 @@ function init() {
   // Preferences, before anything can read one. holdWrites decides what a held
   // key writes, so it has to be in place before the first note can be played.
   loadSettings();
+  // The saved instrument starts loading now, so its notes are decoded by the
+  // time the first key is pressed.
+  setInstrument(state.instrument);
 
   // build static UI
   initTones();

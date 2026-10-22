@@ -7,6 +7,7 @@
 // by the tests, where there is no localStorage at all.
 
 import { state } from './state.js';
+import { INSTRUMENTS, DEFAULT_INSTRUMENT } from './config.js';
 
 const STORE_KEY = 'dng.settings.v1';
 
@@ -40,6 +41,10 @@ const DEFAULTS = {
   lang: 'en',
   // The sheet as A4 pages (true) or one continuous strip — see pageLayout().
   pageView: true,
+  // The right rail's section panel minimized to a strip — see inspector.js.
+  railMin: false,
+  // Which recordings play the notes — see INSTRUMENTS in config.js.
+  instrument: DEFAULT_INSTRUMENT,
 };
 
 // A value is either one of a fixed list, or checked by a function when it has
@@ -55,6 +60,8 @@ const ALLOWED = {
   midiDevices: cleanDevices,
   lang: ['en', 'kn', 'hi', 'te', 'ta'],
   pageView: [true, false],
+  railMin: [true, false],
+  instrument: INSTRUMENTS.map(i => i.id),
 };
 
 const midiByte = n => (Number.isInteger(n) && n >= 0 && n <= 127 ? n : null);

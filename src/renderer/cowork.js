@@ -15,7 +15,7 @@
 // the teacher. That needs the backend's Phase 2 (cloud scores) — add it there.
 
 import { state, docs } from './state.js';
-import { semiOf } from './config.js';
+import { semiOf, BPM } from './config.js';
 import { render } from './notation.js';
 import { loadDoc, saveDoc } from './tabs.js';
 import { scoreData, saveJSON } from './io.js';
@@ -106,8 +106,8 @@ function openLesson(l) {
   // Its own tab, on a copy, so the lesson in the list is never what is touched.
   docs.push({
     notes: structuredClone(l.notes), bars: l.bars || [], breaks: l.breaks || [],
-    tones: l.tones, lastBreak: null, title: l.title, preset: null,
-    tala: allTalas()[l.tala] ? l.tala : 'chatusra', bpm: l.bpm || 72,
+    lastBreak: null, title: l.title, preset: null,
+    tala: allTalas()[l.tala] ? l.tala : 'chatusra', bpm: l.bpm || BPM,
   });
   loadDoc(docs.length - 1);
   startLesson(l.id, 'play');

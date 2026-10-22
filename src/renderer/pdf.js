@@ -82,13 +82,9 @@ function drawTones(doc, x, y) {
   const w = TONE_CELL_W;
   doc.setDrawColor(...rgb(TONE_LINE));
   doc.setLineWidth(TONE_BORDER);
-  // The sthayi the sheet's legend is showing; a tone switched off there is a
-  // blank white cell, as on screen.
-  const on = state.tones[state.oct + 1];
   for (let i = 0; i < TONE_LETTER.length; i++) {
     doc.setFillColor(...rgb(TONE_BG));
     doc.rect(x + i * w, y, w, TONE_ROW_H, 'FD');
-    if (!on[i]) doc.setFillColor(255, 255, 255);
     doc.rect(x + i * w, y + TONE_ROW_H, w, TONE_MK_H, 'FD');
   }
 
@@ -106,7 +102,6 @@ function drawTones(doc, x, y) {
   doc.setDrawColor(...rgb(SHEET_INK));
   doc.setFillColor(...rgb(SHEET_INK));
   TONE_MARK.forEach((m, i) => {
-    if (!on[i]) return;
     const cx = x + i * w + w / 2;
     if (m === 'o') {
       doc.setLineWidth(MK_O_W);

@@ -93,15 +93,24 @@ for (const [secs, sym, dot] of LADDER) {
   );
 }
 
+// A hold BETWEEN two symbols keeps every danta it was down for: 11 dantas is
+// written (and played) as 11, headed by the largest glyph that fits — not
+// rounded down to a bindu.
+for (const dantas of [5, 7, 11, 13, 23]) {
+  const note = holdMs(dantas * ENTRY_BEAT_MS / TIME_UNITS_PER_BEAT);
+  is(unitsOf(note), dantas, `a ${dantas}-danta hold is worth ${dantas} dantas`);
+}
+is(holdMs(11 * ENTRY_BEAT_MS / 8).sym, 'bindu', 'an 11-danta hold is headed by a bindu');
+
 // The shortest tap there is still writes SOMETHING, and writes the shortest
 // glyph rather than the palette's.
 is(holdMs(0).sym, 'danta', 'a zero-length tap writes a danta, not a bindu');
 is(holdMs(1000 / 64).sym, 'danta', 'a tap far shorter than one tick writes a danta');
 
-// Growth stops at Maguru — one full division. Holding longer must not run past
-// it into a value the box cannot hold.
-is(holdMs(8000).sym, 'Maguru', 'holding past the cap stops at Maguru');
-is(holdMs(8000).dot, false, 'the cap is a plain Maguru, not a dotted one');
+// A hold longer than a Maguru is written as long as it was held; the layout
+// carries it across the division line with a join.
+is(holdMs(8000).dur, 8, 'eight seconds held is eight beats, not cut to a Maguru');
+is(holdMs(5500).dur, 5.5, 'five and a half seconds held is five and a half beats');
 
 // The palette selection no longer decides the value in this mode: the same
 // hold writes the same symbol whatever is selected.
@@ -145,12 +154,44 @@ for (const secs of [0.5, 1, 2, 3]) {
     `${secs}s held reads the same pumped as tapped`);
 }
 
-// ---------- metronome ON: the beat is the clock ----------
+// ---------- MIDI event timestamps are the hold, not the handler's clock -----
 //
-// Value comes off the CLICKS, one whole beat each, and from nowhere else. The
-// wall clock underneath is only consulted for a tap that ends before the first
-// click has landed — nobody heard a beat go by, so nothing may be written as
-// one.
+// A key's handler can run a frame after the key arrived (render() shares the
+// thread). The press and release are timed from the events' own stamps, so a
+// late handler does not move the note across a symbol.
+function holdStamped({ pressAt, pressSeen, tickTo = null, releaseAt, releaseSeen }) {
+  state.notes = [];
+  state.hist = [];
+  clock = pressSeen;
+  const index = addNote(0, { playSound: false });
+  const release = startHoldPromotion(index, state.sym, pressAt);
+  if (tickTo != null) { advanceHoldPromotions(tickTo - clock); clock = tickTo; }
+  clock = releaseSeen;
+  release(releaseAt);
+  return unitsOf(state.notes[index]);
+}
+
+// 375 ms is three dantas. The press handler ran 70 ms late; read off the clock
+// that would be 305 ms, two dantas.
+is(holdStamped({ pressAt: 1000, pressSeen: 1070, releaseAt: 1375, releaseSeen: 1375 }), 3,
+  'a late press handler does not shorten a stamped hold');
+// The release handler late instead: the clock would say 445 ms, four dantas.
+is(holdStamped({ pressAt: 1000, pressSeen: 1000, releaseAt: 1375, releaseSeen: 1445 }), 3,
+  'a late release handler does not lengthen a stamped hold');
+// The growth tick won the race against the queued key-up and counted to 1320;
+// the key was up at 1250, two dantas, not the three the tick reached.
+is(holdStamped({ pressAt: 1000, pressSeen: 1000, tickTo: 1320, releaseAt: 1250, releaseSeen: 1330 }), 2,
+  'time a tick counted past the stamped release is taken back');
+// Stamps that cannot be believed fall back to the clock at the call.
+is(holdStamped({ pressAt: 0, pressSeen: 5000, releaseAt: 0, releaseSeen: 5250 }), 2,
+  'a stale stamp falls back to the clock');
+is(holdStamped({ pressAt: 9000, pressSeen: 1000, releaseAt: NaN, releaseSeen: 1250 }), 2,
+  'a future or non-numeric stamp falls back to the clock');
+
+// ---------- metronome ON: the tempo sets how long a danta is ----------
+//
+// A hold is still measured to the danta; the metronome only decides how long a
+// beat — and so a danta — is. Nothing is rounded to the nearest click.
 
 // Press, let `ticks` metronome beats go by (with `gapMs` of wall clock between
 // them so the danta clock runs too), release.
@@ -175,39 +216,30 @@ state.sym = 'bindu';
 state.holdWrites = 'time';
 state.bpm = 72;
 
-is(holdThroughBeats(1).sym, 'bindu', 'one click held through is one bindu');
-is(holdThroughBeats(2).sym, 'guru', 'two clicks held through is a guru');
-is(holdThroughBeats(3).sym, 'guru', 'three clicks held through is a guru…');
-is(holdThroughBeats(3).dot, true, '…with the chukki');
-is(holdThroughBeats(4).sym, 'Maguru', 'four clicks held through is a Maguru');
-is(holdThroughBeats(9).sym, 'Maguru', 'holding past the cap still stops at Maguru');
+const units = n => Math.round(n.dur * TIME_UNITS_PER_BEAT);
+is(holdThroughBeats(1).sym, 'bindu', 'one beat held is one bindu');
+is(holdThroughBeats(2).sym, 'guru', 'two beats held is a guru');
+is(holdThroughBeats(3).dur, 3, 'three beats held is three beats');
+is(holdThroughBeats(9).dur, 9, 'nine beats held is nine beats, not cut to a Maguru');
 
-// A hold that runs PAST a click but not to the next one is worth the clicks it
-// heard, and nothing more — that is what snapping to the count means.
-is(holdThroughBeats(1, 60000 / 72, 400).sym, 'bindu',
-  'a hold half a beat past the first click is still a bindu');
-is(holdThroughBeats(2, 60000 / 72, 800).sym, 'guru',
-  'a hold most of a beat past the second click is still a guru');
-
-// Released before any click: nobody counted a beat, so the short symbols are
-// still reachable by hand and a whole beat is not written for one that was
-// never heard.
+// Between two clicks the hold keeps its dantas instead of dropping back to the
+// last click.
+const beat72 = 60000 / 72;
+is(units(holdThroughBeats(1, beat72, beat72 / 2)), 12, 'a beat and a half held is a bindu chukki');
+is(units(holdThroughBeats(2, beat72, beat72 * 3 / 8)), 19, 'two beats and three dantas is 19 dantas');
+is(units(holdThroughBeats(0, 0, beat72 * 7 / 8)), 7, 'seven dantas before the first click is seven dantas');
 is(holdThroughBeats(0, 0, 0).sym, 'danta', 'a stab between clicks writes a danta');
-is(holdThroughBeats(0, 0, 250).sym, 'praya', 'a quarter-beat stab at 72bpm writes a praya');
-is(holdThroughBeats(0, 0, 415).sym, 'vasu', 'a half-beat stab at 72bpm writes a vasu');
-is(holdThroughBeats(0, 0, 820).sym, 'vasu',
-  'a stab that all but reaches the click stays under a whole beat');
+is(holdThroughBeats(0, 0, beat72 / 4).sym, 'praya', 'a quarter-beat stab at 72bpm writes a praya');
 
-// THE FASTER THE BEAT, THE FASTER THE VALUE. The same wall-clock hold is worth
-// more at a faster count, because more of the count went by inside it — which
-// is what having the metronome on while writing is for.
+// THE FASTER THE BEAT, THE FASTER THE VALUE: the same wall-clock hold is worth
+// more dantas at a faster count.
 {
   state.bpm = 144;
-  const fast = holdThroughBeats(2, 60000 / 144);   // two clicks inside 833ms
+  const fast = holdMs(beat72);
   state.bpm = 72;
-  const slow = holdThroughBeats(1, 60000 / 72);    // one click inside 833ms
-  is(fast.sym, 'guru', '833ms is two clicks at 144bpm, so a guru');
-  is(slow.sym, 'bindu', 'the same 833ms is one click at 72bpm, so a bindu');
+  const slow = holdMs(beat72);
+  is(fast.sym, 'guru', '833ms is two beats at 144bpm, so a guru');
+  is(slow.sym, 'bindu', 'the same 833ms is one beat at 72bpm, so a bindu');
 }
 
 // A tempo change part-way through a hold needs no arithmetic here at all: the
@@ -272,7 +304,7 @@ for (const sym of ['danta', 'praya', 'vasu', 'bindu', 'guru', 'Maguru']) {
 // grow, because nothing was registered to grow.
 state.metroOn = true;
 state.sym = 'bindu';
-is(holdThroughBeats(3).sym, 'bindu', 'fixed mode: three clicks do not grow the note');
+is(holdThroughBeats(3).sym, 'bindu', 'fixed mode: three beats do not grow the note');
 state.metroOn = false;
 
 // The two failure modes this mode exists to prevent, stated directly against

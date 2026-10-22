@@ -19,7 +19,7 @@ import {
 import { deleteSelectedBar } from './repeats.js';
 import { freqOf, startSustain, stopSustain } from './audio.js';
 import { undo, redo } from './history.js';
-import { togglePlay } from './playback.js';
+import { togglePlay, playPart } from './playback.js';
 import { setOct } from './piano.js';
 import { newDoc } from './tabs.js';
 import { downloadJSON } from './io.js';
@@ -86,6 +86,9 @@ export function installKeyboard() {
       // piano and the status line agree with what is being written.
       if (state.oct !== m.oct) setOct(m.oct);
 
+      // Sound FIRST: the key is heard the instant it goes down, and the
+      // score catches up on the next frame.
+      const voice = startSustain(freqOf(semiOf(m.idx, head), m.oct));
       closeMetronomeSilence();
       const noteIndex = addNote(m.idx, {
         playSound: false,
@@ -97,7 +100,7 @@ export function installKeyboard() {
       const written = noteIndex != null;
       if (written) beginMetronomeEntry();
       heldVoices.set(e.code, {
-        voice: startSustain(freqOf(semiOf(m.idx, head), m.oct)),
+        voice,
         stopPromotion: written ? startHoldPromotion(noteIndex, selectedSym) : () => {},
         noteIndex,
         written,
@@ -120,7 +123,7 @@ export function installKeyboard() {
       if (deleteSelectedBar()) { e.preventDefault(); return; }
     }
     if (k === 'backspace') { deleteLast(); e.preventDefault(); return; }
-    if (k === ' ')         { togglePlay(); e.preventDefault(); return; }
+    if (k === ' ')         { (e.shiftKey ? playPart : togglePlay)(); e.preventDefault(); return; }
   });
 
   document.addEventListener('keyup', e => {

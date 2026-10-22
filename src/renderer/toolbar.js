@@ -6,7 +6,7 @@ import { MIN_BPM, MAX_BPM } from './config.js';
 import { undo, redo } from './history.js';
 import { clearAll } from './score.js';
 import { downloadJSON, exportSVG } from './io.js';
-import { togglePlay, stopPlay } from './playback.js';
+import { togglePlay, stopPlay, playPart } from './playback.js';
 import { render, updateSheetMeta } from './notation.js';
 import { newDoc } from './tabs.js';
 import { openVarasePop } from './menus.js';
@@ -19,6 +19,23 @@ import { exportMP3 } from './mp3.js';
 import { exportMIDI } from './midi-export.js';
 import { refreshMidiStatus } from './midi-input.js';
 import { setSetting } from './settings.js';
+import { INSTRUMENTS } from './config.js';
+import { currentInstrument, setInstrument, pluck, freqOf } from './audio.js';
+
+// Fill the instrument dropdown from INSTRUMENTS, so a new set is one row in
+// config.js and a folder of samples. A change is saved, loaded, and then
+// previewed with a Sa, so the choice is heard straight away.
+function installInstruments() {
+  const sel = document.getElementById('instrument');
+  if (!sel) return;
+  for (const i of INSTRUMENTS) sel.add(new Option(i.name, i.id));
+  sel.value = currentInstrument().id;
+  sel.addEventListener('change', async () => {
+    setSetting('instrument', sel.value);
+    await setInstrument(sel.value);
+    pluck(freqOf(0, 0), 0.6);
+  });
+}
 
 function setMode(mode) {
   const was = state.mode;
@@ -121,12 +138,14 @@ export function wireToolbar() {
   document.getElementById('bMidi').addEventListener('click', exportMIDI);
   document.getElementById('metroBtn').addEventListener('click', toggleMetronome);
   installMetronomeSounds();
+  installInstruments();
   document.getElementById('pageViewBtn').addEventListener('click', togglePageView);
   document.getElementById('pageViewBtn').classList.toggle('on', state.pageView);
   document.getElementById('gutterBtn').addEventListener('click', toggleGutter);
 
   document.getElementById('playBtn').addEventListener('click', togglePlay);
   document.getElementById('bStop').addEventListener('click', stopPlay);
+  document.getElementById('bPart').addEventListener('click', playPart);
   document.getElementById('bStart').addEventListener('click', stopPlay);
 
   document.getElementById('inputModes').addEventListener('click', e => {

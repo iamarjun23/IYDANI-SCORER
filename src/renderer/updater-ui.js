@@ -1,106 +1,76 @@
+// The menubar's update chip. electron-updater (src/updater.js) downloads in
+// the background on its own; this only says so. Hidden until an update is
+// found, a quiet progress pill while it downloads, an accent "Update ready"
+// once it has landed — click it for Restart now / Later. Later costs nothing:
+// autoInstallOnAppQuit installs it the next time the app is closed.
+//
+// A release whose notes carry [critical] or [security] still gets the
+// blocking card instead: that is the one case where "later" is not allowed.
+
+import { show, hide, pop } from './popover.js';
+
 export function initUpdater() {
   const updater = window.hamsleka?.updater;
-  if (!updater) return;
+  const chip = document.getElementById('updChip');
+  if (!updater || !chip) return;
+  const text = chip.querySelector('.upd-text');
+  const bar = chip.querySelector('.upd-bar i');
+  let version = '';
 
-  // Register listeners
-  updater.onAvailable((info) => {
-    console.log('Update available:', info);
-  });
+  const downloading = (pct) => {
+    if (chip.dataset.state === 'ready') return;
+    chip.hidden = false;
+    chip.dataset.state = 'downloading';
+    text.textContent = `Update ${Math.round(pct)}%`;
+    bar.style.width = `${pct}%`;
+    chip.title = `Downloading version ${version}`;
+  };
 
-  updater.onProgress((percent) => {
-    console.log(`Update download progress: ${percent}%`);
-  });
+  updater.onAvailable((info) => { version = info.version; downloading(0); });
+  updater.onProgress((pct) => downloading(pct));
 
   updater.onReady((info) => {
-    console.log('Update ready to install:', info);
-    showUpdateUI(info);
+    version = info.version;
+    if (info.critical) { showCritical(updater, info.version); return; }
+    chip.hidden = false;
+    chip.dataset.state = 'ready';
+    text.textContent = 'Update ready';
+    chip.title = `Version ${version} is ready to install`;
   });
 
+  // A failed download is retried on the next check; a pill stuck at 37% would
+  // say otherwise. A ready update stays — the file is already on disk.
   updater.onError((err) => {
     console.error('Update error:', err);
+    if (chip.dataset.state !== 'ready') chip.hidden = true;
+  });
+
+  chip.addEventListener('click', () => {
+    if (chip.dataset.state !== 'ready') return;
+    show(`<div class="upd-pop">
+      <b>Version ${version} is ready</b>
+      <p>Your scores are autosaved. The app restarts in a few seconds.</p>
+      <div class="row"><button class="mbtn" data-upd="later">Later</button><button class="mbtn accent" data-upd="now">Restart now</button></div>
+      <small>Later: installs next time you close the app</small>
+    </div>`, chip, 'right');
+    pop().querySelector('[data-upd="later"]').onclick = hide;
+    pop().querySelector('[data-upd="now"]').onclick = () => updater.install();
   });
 }
 
-function showUpdateUI(info) {
-  // Clean up any existing updater elements
-  const existingOverlay = document.getElementById('updater-overlay');
-  const existingBanner = document.getElementById('updater-banner');
-  if (existingOverlay) existingOverlay.remove();
-  if (existingBanner) existingBanner.remove();
-
-  if (info.critical) {
-    // Show full-screen blocking modal
-    const overlay = document.createElement('div');
-    overlay.id = 'updater-overlay';
-    overlay.style.position = 'fixed';
-    overlay.style.inset = '0';
-    overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
-    overlay.style.zIndex = '9999';
-    overlay.style.display = 'flex';
-    overlay.style.flexDirection = 'column';
-    overlay.style.alignItems = 'center';
-    overlay.style.justifyContent = 'center';
-    overlay.style.color = '#ffffff';
-    overlay.style.fontFamily = 'inherit';
-    overlay.style.padding = '20px';
-    overlay.style.textAlign = 'center';
-
-    overlay.innerHTML = `
-      <div style="background: #222225; border: 1.5px solid #d8513a; border-radius: 12px; padding: 36px 24px; max-width: 440px; box-shadow: 0 12px 30px rgba(0,0,0,0.6);">
-        <div style="font-size: 36px; margin-bottom: 12px;">⚠️</div>
-        <h2 style="color: #ededee; margin-bottom: 12px; font-weight: 700; font-size: 20px;">Critical Update Required</h2>
-        <p style="margin-bottom: 24px; font-size: 14px; line-height: 1.5; color: #a6a6ac;">
-          A critical security update (v${info.version}) is required to continue. Please click the button below to restart and update IYDANI.
-        </p>
-        <button id="btnCriticalUpdate" style="background: #d8513a; color: white; border: none; padding: 12px 32px; font-size: 13.5px; font-weight: 700; border-radius: 8px; cursor: pointer; transition: background 0.2s; width: 100%;">
-          Restart & Update Now
-        </button>
-      </div>
-    `;
-
-    document.body.appendChild(overlay);
-
-    document.getElementById('btnCriticalUpdate').addEventListener('click', () => {
-      updater.install();
-    });
-  } else {
-    // Show top-bar banner
-    const banner = document.createElement('div');
-    banner.id = 'updater-banner';
-    banner.style.position = 'fixed';
-    banner.style.top = '0';
-    banner.style.left = '0';
-    banner.style.right = '0';
-    banner.style.background = 'var(--accent, #2f6fe0)';
-    banner.style.color = '#ffffff';
-    banner.style.zIndex = '9998';
-    banner.style.display = 'flex';
-    banner.style.alignItems = 'center';
-    banner.style.justifyContent = 'center';
-    banner.style.gap = '16px';
-    banner.style.padding = '10px 20px';
-    banner.style.fontSize = '13.5px';
-    banner.style.fontWeight = '500';
-    banner.style.boxShadow = '0 2px 10px rgba(0,0,0,0.2)';
-
-    banner.innerHTML = `
-      <span>Version v${info.version} is ready to install!</span>
-      <button id="btnNormalUpdate" style="background: #ffffff; color: var(--accent, #2f6fe0); border: none; padding: 5px 14px; font-size: 12px; font-weight: 700; border-radius: 6px; cursor: pointer;">
-        Restart & Update
-      </button>
-      <button id="btnNormalUpdateClose" style="background: transparent; color: rgba(255, 255, 255, 0.8); border: none; font-size: 16px; cursor: pointer; padding: 2px 8px; margin-left: 10px;">
-        ✕
-      </button>
-    `;
-
-    document.body.appendChild(banner);
-
-    document.getElementById('btnNormalUpdate').addEventListener('click', () => {
-      updater.install();
-    });
-
-    document.getElementById('btnNormalUpdateClose').addEventListener('click', () => {
-      banner.remove();
-    });
-  }
+function showCritical(updater, version) {
+  if (document.getElementById('updater-overlay')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'updater-overlay';
+  overlay.className = 'lgd-scrim';
+  overlay.innerHTML = `<div class="lgd" role="alertdialog" aria-modal="true" style="max-width:380px;display:block;text-align:center;padding:24px">
+    <h2 style="margin:0 0 8px;font-size:17px">Required update</h2>
+    <p style="margin:0 0 18px;font-size:13px;line-height:1.5;color:var(--ink-2)">Version ${version} fixes a serious problem. Restart to keep working.</p>
+    <button class="mbtn accent" id="btnCriticalUpdate" style="width:100%;justify-content:center;background:#d8513a;border-color:#d8513a">Restart and update</button>
+  </div>`;
+  // Modal: swallow keys so typing over it does not write notes on the staff.
+  // Captured on the way DOWN, like about.js, so it lands before note entry.
+  document.addEventListener('keydown', (e) => e.stopPropagation(), true);
+  document.body.appendChild(overlay);
+  document.getElementById('btnCriticalUpdate').addEventListener('click', () => updater.install());
 }

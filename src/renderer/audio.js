@@ -14,9 +14,9 @@
 
 import { state } from './state.js';
 import {
-  SAMPLE_MIDI, SAMPLE_URL, SAMPLE_GAIN, SAMPLE_DETUNE, RING_SECONDS, semiOf,
+  instrumentById, sampleUrl, SAMPLE_GAIN, RELEASE_SHARE, RELEASE_MAX_SECONDS, RING_MIN_SECONDS, AUDIO_LATENCY_HINT, semiOf,
   SAMPLE_LOOP_AT, SAMPLE_LOOP_MIN, SAMPLE_SUSTAIN_MAX, SAMPLE_SUSTAIN_LOOP,
-  HELD_FADE_AT, HELD_FADE_T,
+  HELD_FADE_T,
   SUSTAIN_FLOOR, SUSTAIN_DECAY_T, SUSTAIN_DECAY_MIN_T, SUSTAIN_TONE_T,
   SUSTAIN_TONE_FROM_HZ, SUSTAIN_TONE_TO_HZ,
   SUSTAIN_TONE_FROM_RATIO, SUSTAIN_TONE_TO_RATIO,
@@ -26,8 +26,7 @@ let ctx = null;
 
 function audio() {
   if (!ctx) {
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
-    decodeSamples();
+    ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: AUDIO_LATENCY_HINT });
   }
   // Autoplay policy parks a context created before any gesture; every entry
   // point runs through here so the first real note wakes it.
@@ -48,29 +47,75 @@ const loops = new Map();        // MIDI note -> { start, end } sustain region
 // held live key plays: its own decay IS the fade a piano key has when the key
 // is kept down, and no loop can imitate that without freezing the tone.
 const loopBuffers = new Map();  // MIDI note -> the same recording, loop-prepared
-let encoded = null;             // MIDI note -> ArrayBuffer, before decoding
-let ready = null;               // resolves once decoding has been attempted
+let inst = null;                // the instrument loaded or loading — config.js
+let ready = null;               // resolves once `inst` has been fetched and decoded
 
-// Fetching needs no AudioContext, so it starts as soon as the module loads and
-// is usually finished by the time the first key is pressed.
-function fetchSamples() {
-  encoded = new Map();
-  // The `dng:` scheme only exists inside the app. Under a node test this module
-  // is imported for its pure helpers, so don't fill the log with 24 failures.
-  if (typeof window === 'undefined') return Promise.resolve();
-  return Promise.all(SAMPLE_MIDI.map(async midi => {
-    try {
-      const res = await fetch(SAMPLE_URL(midi));
-      if (!res.ok) throw new Error(`${res.status}`);
-      encoded.set(midi, await res.arrayBuffer());
-    } catch (err) {
-      console.error(`[audio] sample n${midi} failed to load:`, err.message);
-    }
-  })).then(() => {
-    console.info(`[audio] ${encoded.size}/${SAMPLE_MIDI.length} note samples fetched`);
-  });
+// Which instrument the notes are played on. Before setInstrument() has run —
+// and under the node tests, which never run it — that is the saved setting.
+export function currentInstrument() {
+  return inst || instrumentById(state.instrument);
 }
-const fetching = fetchSamples();
+
+// Swap the recordings every voice is built from. Called once at start-up with
+// the saved choice and again whenever it is changed. Voices already sounding
+// keep the buffers they were started on; everything after takes the new set.
+// A load that finishes after another instrument has been chosen is thrown
+// away rather than mixed into it.
+export function setInstrument(id) {
+  const next = instrumentById(id);
+  if (next === inst && ready) return ready;
+  inst = next;
+  buffers.clear(); onsets.clear(); loops.clear(); loopBuffers.clear();
+  if (bus) bus.tone.frequency.value = toneFor(next, bus.context);
+  ready = loadInstrument(next);
+  return ready;
+}
+
+async function loadInstrument(next) {
+  // The `dng:` scheme only exists inside the app. Under a node test this module
+  // is imported for its pure helpers, so don't fill the log with failures.
+  if (typeof window === 'undefined') return;
+  const notes = Object.keys(next.cents).map(Number);
+  const decoded = await Promise.all(notes.map(async midi => {
+    try {
+      const res = await fetch(sampleUrl(next, midi));
+      if (!res.ok) throw new Error(`${res.status}`);
+      return [midi, await audio().decodeAudioData(await res.arrayBuffer())];
+    } catch (err) {
+      console.error(`[audio] ${next.dir}/n${midi} failed to load:`, err.message);
+      return null;
+    }
+  }));
+  if (inst !== next) return;
+  for (const entry of decoded) {
+    if (!entry) continue;
+    const [midi, buf] = entry;
+    buffers.set(midi, buf);
+    const src = buf.getChannelData(0);
+    onsets.set(midi, onsetOffset(src, buf.sampleRate));
+    // The loop is cut out of a duplicate, not out of the recording — see
+    // loopBuffers. The copy is only kept if a loop was actually found.
+    if (SAMPLE_SUSTAIN_LOOP) {
+      const copy = ctx.createBuffer(1, src.length, buf.sampleRate);
+      const data = copy.getChannelData(0);
+      data.set(src);
+      const loop = buildSustainLoop(data, buf.sampleRate, freqOfMidi(midi));
+      if (loop) { loops.set(midi, loop); loopBuffers.set(midi, copy); }
+    }
+  }
+  const lead = [...onsets.values()];
+  const meanLead = lead.length ? lead.reduce((a, b) => a + b, 0) / lead.length : 0;
+  console.info(`[audio] ${next.name}: ${buffers.size}/${notes.length} note samples decoded`
+    + ` — skipping ${(meanLead * 1000).toFixed(0)}ms of lead-in silence,`
+    + ` ${loops.size} with a sustain loop`);
+}
+
+// The rate factor that puts recording `src` of the current instrument on
+// A=440 — see `cents` in config.js.
+function tuning(src) {
+  return Math.pow(2, -(currentInstrument().cents[src] || 0) / 1200);
+}
+
 
 // Where the note actually starts, in seconds. The threshold is relative to the
 // buffer's own peak so it survives a quieter replacement sample, and the result
@@ -102,7 +147,7 @@ export function onsetOffset(data, sampleRate) {
 // THE LENGTH IS FOUND BY CORRELATION, not by arithmetic on the note's nominal
 // pitch. Rounding SAMPLE_LOOP_MIN up to whole equal-tempered periods looks
 // exact and is not: this set is tuned +1.5 to +9.5 cents sharp (see
-// SAMPLE_DETUNE_CENTS), and 120 ms of the top octave is over a hundred periods,
+// `cents` in config.js), and 120 ms of the top octave is over a hundred periods,
 // so a few cents of error accumulates into most of a period of drift. Measured
 // that way the high notes wrapped ANTI-PHASE — correlation -0.11 to -0.71,
 // which is a click on every pass. So the length is chosen by searching a period
@@ -183,36 +228,6 @@ export function buildSustainLoop(data, rate, freq) {
   return { start: start / rate, end: end / rate, match: best };
 }
 
-function decodeSamples() {
-  if (!ready) ready = (async () => {
-    await fetching;
-    for (const [midi, buf] of encoded) {
-      try {
-        const decoded = await ctx.decodeAudioData(buf.slice(0));
-        buffers.set(midi, decoded);
-        const src = decoded.getChannelData(0);
-        onsets.set(midi, onsetOffset(src, decoded.sampleRate));
-        // The loop is cut out of a duplicate, not out of the recording — see
-        // loopBuffers. The copy is only kept if a loop was actually found.
-        if (SAMPLE_SUSTAIN_LOOP) {
-          const copy = ctx.createBuffer(1, src.length, decoded.sampleRate);
-          const data = copy.getChannelData(0);
-          data.set(src);
-          const loop = buildSustainLoop(data, decoded.sampleRate, freqOfMidi(midi));
-          if (loop) { loops.set(midi, loop); loopBuffers.set(midi, copy); }
-        }
-      } catch (err) {
-        console.error(`[audio] sample n${midi} failed to decode:`, err.message);
-      }
-    }
-    const lead = [...onsets.values()];
-    const meanLead = lead.length ? lead.reduce((a, b) => a + b, 0) / lead.length : 0;
-    console.info(`[audio] ${buffers.size}/${SAMPLE_MIDI.length} note samples decoded`
-      + ` — skipping ${(meanLead * 1000).toFixed(0)}ms of lead-in silence,`
-      + ` ${loops.size} with a sustain loop`);
-  })();
-  return ready;
-}
 
 // Decoding needs a context, so make one up front instead of waiting for the
 // first note — that wait is exactly what used to leave the first note sampleless.
@@ -225,7 +240,14 @@ try { audio(); } catch (err) {
 // somewhere to go, and the limiter only acts on what still peaks over. Live
 // playback and the MP3 render build the SAME bus, so the file cannot sound
 // different from the editor.
-export function createMasterBus(context) {
+// The bus's lowpass for `instrument` — its toneHz, or wide open at 0. Wide open
+// is the top of the band rather than no filter, so the live bus can be retuned
+// in place when the instrument changes.
+function toneFor(instrument, context) {
+  return instrument.toneHz > 0 ? instrument.toneHz : context.sampleRate / 2;
+}
+
+export function createMasterBus(context, instrument = currentInstrument()) {
   const limiter = context.createDynamicsCompressor();
   limiter.threshold.value = -4;
   limiter.knee.value = 12;
@@ -236,7 +258,12 @@ export function createMasterBus(context) {
   limiter.release.value = 0.08;
   const trim = context.createGain();
   trim.gain.value = 0.7;
-  trim.connect(limiter).connect(context.destination);
+  // See `toneHz` in config.js.
+  const tone = context.createBiquadFilter();
+  tone.type = 'lowpass';
+  tone.frequency.value = toneFor(instrument, context);
+  trim.connect(tone).connect(limiter).connect(context.destination);
+  trim.tone = tone;
   return trim;
 }
 
@@ -248,8 +275,10 @@ function masterBus(context) {
 
 // A voice fades in over this long. The onset trim starts playback just before
 // the attack, which is near-silence but not silence — without a ramp that step
-// is a click on every single note.
-const ATTACK = 0.003;
+// is a click on every single note. An instrument's `attack` says how much
+// longer than that; CLICK_ATTACK is the shortest fade that does not click.
+const CLICK_ATTACK = 0.003;
+const attackLen = () => Math.max(CLICK_ATTACK, currentInstrument().attack);
 
 // What a release ramps down to. Exponential ramps cannot reach zero, so this is
 // the conventional near-silence they aim at, named because the sustain decay
@@ -304,14 +333,20 @@ export function sustainDecayT(span) {
 //
 // The decay starts where the recording stops falling by itself, and before
 // that the recording is left alone. Looped, that is the loop point. Unlooped
-// it is HELD_FADE_AT, with a held key's own fade — the recording sits on a
+// it is the instrument's `fadeAt`, with a held key's own fade — the recording sits on a
 // residue instead of dying, and a played note must not end on that buzz any
 // more than a held key may.
 export function shapeNote(param, level, t, d, loopAt = null) {
-  attackOnly(param, level, t);
+  // Never more than half the note, or a short note is still fading in when it
+  // ends. Never under CLICK_ATTACK either.
+  const atk = Math.max(CLICK_ATTACK, Math.min(attackLen(), d / 2));
+  attackOnly(param, level, t, atk);
   const looped = loopAt != null;
-  const hold = t + Math.max(d, ATTACK);
-  const from = t + Math.max(looped ? loopAt : HELD_FADE_AT, ATTACK);
+  // Held for the whole written value, released AFTER it over a short tail that
+  // crossfades into the next note's attack — see RELEASE_SHARE.
+  const ring = Math.max(ringLength(d), CLICK_ATTACK);
+  const hold = t + Math.max(d, atk);
+  const from = t + Math.max(looped ? loopAt : currentInstrument().fadeAt, atk);
   let end = level;
   // Only if the note lasts that long: a decay booked past `hold` would land in
   // the middle of the release ramp.
@@ -323,15 +358,19 @@ export function shapeNote(param, level, t, d, loopAt = null) {
   // Pin the level the decay has ACTUALLY reached, never the struck level —
   // that would step the note back up to full at the moment it is let go.
   param.setValueAtTime(end, hold);
-  const done = hold + ringLength(d);
-  param.exponentialRampToValueAtTime(RELEASE_FLOOR, done);
+  const done = hold + ring;
+  // LINEAR, not exponential: an exponential release is steepest at its start,
+  // so the old note had dropped ~9 dB before the next one had faded in, and
+  // every note change dipped. A straight line stays near full while the next
+  // note rises, and the two crossfade at a steady level.
+  param.linearRampToValueAtTime(0, done);
   return done;
 }
 
 // Attack and nothing else, for a voice whose recording supplies its own decay.
-export function attackOnly(param, level, t) {
+export function attackOnly(param, level, t, atk = attackLen()) {
   param.setValueAtTime(0, t);
-  param.linearRampToValueAtTime(level, t + ATTACK);
+  param.linearRampToValueAtTime(level, t + atk);
 }
 
 // The darkening, as a lowpass whose corner falls away from the strike.
@@ -397,10 +436,10 @@ function sampleVoice(f, when = null, level = SAMPLE_GAIN, sustain = true) {
     node.loopStart = loop.start;
     node.loopEnd = loop.end;
   }
-  // SAMPLE_DETUNE pulls the whole set onto concert pitch — the recordings are
-  // ~6 cents sharp of A=440, which beats against a live instrument. It is a
-  // constant factor on the rate, so it never changes WHICH sample is chosen.
-  node.playbackRate.value = Math.pow(2, (midi - src) / 12) * SAMPLE_DETUNE;
+  // tuning() pulls the recording onto concert pitch — every set is a few cents
+  // sharp of A=440, which beats against a live instrument. It is a factor on
+  // the rate, so it never changes WHICH sample is chosen.
+  node.playbackRate.value = Math.pow(2, (midi - src) / 12) * tuning(src);
   if (!sampleVoice.logged) {
     sampleVoice.logged = true;
     console.info(`[audio] sampled playback active — first note MIDI ${midi.toFixed(1)}`
@@ -411,10 +450,10 @@ function sampleVoice(f, when = null, level = SAMPLE_GAIN, sustain = true) {
   const t = Math.max(when == null ? a.currentTime : when, a.currentTime);
   // A sustained voice gets its whole envelope from strike(), which knows how
   // long the note is. A held key's recording dies on its own, then stops
-  // falling and sits on a residue — see HELD_FADE_AT.
+  // falling and sits on a residue — see `fadeAt` in config.js.
   if (!sustain) {
     attackOnly(g.gain, level, t);
-    g.gain.setTargetAtTime(0, t + HELD_FADE_AT, HELD_FADE_T);
+    g.gain.setTargetAtTime(0, t + currentInstrument().fadeAt, HELD_FADE_T);
   }
   // The darkening only makes sense over a LOOPED voice: a sample with no loop
   // runs out on its own and is already losing its top as it decays, so filtering
@@ -440,7 +479,7 @@ function bufferFor(midi, looped) {
 
 function whenReady() {
   audio();
-  return decodeSamples();
+  return ready || setInstrument(state.instrument);
 }
 
 // Pitch is intervallic from state.saMidi (the tonic key set by the Sa picker).
@@ -551,23 +590,13 @@ export function heldLength(beats, bpm) {
   return Math.max(0, Number(beats) || 0) * (60 / (Number(bpm) || 120));
 }
 
-// How long that note takes to die away once it is let go. The ring cannot
-// outlast the note by more than the note itself: a bindu at any sane tempo is
-// long enough that the cap changes nothing, but a run of praya or danta — which
-// is what an imported melody is made of — would otherwise leave eight voices
-// ringing at once and come out as a smear rather than a line. Floored at the
-// attack so no note is gated shut hard enough to click.
+// How long a note of written length `held` takes to fade AFTER its written
+// end — the crossfade into the next note. See RELEASE_SHARE in config.js.
 export function ringLength(held) {
-  return Math.max(ATTACK, Math.min(RING_SECONDS, held || RING_SECONDS));
+  return Math.min(RELEASE_MAX_SECONDS, (Number(held) || 0) * RELEASE_SHARE);
 }
 
-// One struck note held for `d` seconds, then rung out over ringLength(d) more.
-// `d` is the WRITTEN value, not the total: it used to be the total, because the
-// hold could safely cover the ring as well while the recording was decaying
-// under it and had gone quiet by then anyway. With a sustain loop it has not
-// gone quiet — the note would hold at full level for twice its value and every
-// note in a line would run into the next. Same total length as before; the
-// second half of it is now a decay rather than a hold.
+// One struck note, held `d` seconds and then released over ringLength(d).
 export function pluck(f, d = 0.33) {
   return pluckAt(f, d, null);
 }
@@ -576,7 +605,7 @@ export function pluck(f, d = 0.33) {
 // clamped to now, so a scheduler that falls behind still sounds the note.
 export function pluckAt(f, d, when = null) {
   const v = sampleVoice(f, when);
-  if (v) { strike(v, d); return v; }
+  if (v) { strike(v, d); damp(lastStrike, Math.round(midiFromFreq(f)), v); return v; }
   // Samples still decoding: play this note as soon as they land — but never
   // long after its moment has gone, or a stale note fires over a later one.
   whenReady().then(() => {
@@ -587,10 +616,39 @@ export function pluckAt(f, d, when = null) {
   return null;
 }
 
+// A string struck again stops ringing from the last time. Without this the
+// ring every short note now gets (RING_MIN_SECONDS) piles up under a run: at
+// danta speed five strikes of one pitch ring at once and a repeated S S S
+// reads as one held S — the run loses its articulation and a danta passage
+// sounds no faster than a praya one. So the previous voice on the SAME pitch
+// is damped at the new one's onset; other pitches ring on underneath, which
+// is the legato the ring exists for. `last` maps pitch -> {g, node}, one map
+// per context, and the onsets must arrive in time order (playback's and the
+// MP3 render's both do).
+//
+// The old voice fades out in a straight line over DAMP_T, under the new strike,
+// the way a piano string re-struck is still sounding when the hammer lands. It
+// was cut in 12 ms, which dropped the pitch to nothing as the new note began.
+// Each repeat then started again from silence, and S S S was reported from the
+// field as a "tan" on every repeat.
+const DAMP_T = 0.08;
+const lastStrike = new Map();
+export function damp(last, key, v) {
+  const prev = last.get(key);
+  last.set(key, v);
+  // Nothing to damp if it has already rung out, or would start after this one.
+  if (!prev || prev.at >= v.at || prev.end <= v.at) return;
+  const p = prev.g.gain;
+  if (p.cancelAndHoldAtTime) p.cancelAndHoldAtTime(v.at); else p.cancelScheduledValues(v.at);
+  p.linearRampToValueAtTime(0, v.at + DAMP_T);
+  prev.node.stop(v.at + DAMP_T + 0.01);
+}
+
 // Measured from the voice's OWN start, which for a scheduled note is in the
 // future.
 function strike(v, d) {
-  v.node.stop(shapeNote(v.g.gain, v.level ?? SAMPLE_GAIN, v.at, d, v.loopAt) + 0.02);
+  v.end = shapeNote(v.g.gain, v.level ?? SAMPLE_GAIN, v.at, d, v.loopAt);
+  v.node.stop(v.end);
 }
 
 // A held piano key uses a sustained voice rather than repeatedly inserting
@@ -648,8 +706,8 @@ export function stopSustain(voice) {
   const g = voice.g;
   g.gain.cancelScheduledValues(t);
   g.gain.setValueAtTime(Math.max(g.gain.value, RELEASE_FLOOR), t);
-  g.gain.exponentialRampToValueAtTime(RELEASE_FLOOR, t + 0.12);
-  voice.node.stop(t + 0.14);
+  g.gain.exponentialRampToValueAtTime(RELEASE_FLOOR, t + RING_MIN_SECONDS);
+  voice.node.stop(t + RING_MIN_SECONDS + 0.02);
 }
 
 // Render playback without using the speakers. MP3 export calls this with the
@@ -660,7 +718,7 @@ export function stopSustain(voice) {
 // module.
 export async function renderSequenceOffline(sequence, bpm, clicks = null) {
   await whenReady();
-  if (!buffers.size) throw new Error('The piano samples could not be loaded.');
+  if (!buffers.size) throw new Error('The note samples could not be loaded.');
 
   const OfflineContext = window.OfflineAudioContext || window.webkitOfflineAudioContext;
   if (!OfflineContext) throw new Error('Offline audio rendering is not supported.');
@@ -678,7 +736,7 @@ export async function renderSequenceOffline(sequence, bpm, clicks = null) {
     if (n.type === 'note' && !n.tie) {
       const wantedMidi = (state.saMidi ?? 60) + semiOf(n.svaraIndex, n.head) + 12 * n.oct;
       const sourceMidi = nearestSample(wantedMidi);
-      const rate = Math.pow(2, (wantedMidi - sourceMidi) / 12) * SAMPLE_DETUNE;
+      const rate = Math.pow(2, (wantedMidi - sourceMidi) / 12) * tuning(sourceMidi);
       const offset = onsets.get(sourceMidi) || 0;
       // The recording's own end used to be the cap — a release could not be
       // scheduled past material that did not exist. With a sustain loop there
@@ -690,10 +748,7 @@ export async function renderSequenceOffline(sequence, bpm, clicks = null) {
       const natural = (buffers.get(sourceMidi).duration - offset) / rate;
       const want = heldLength(Number(n.full) || dur, tempo);
       const soundSeconds = loop ? want : Math.min(want, natural);
-      events.push({
-        wantedMidi, sourceMidi, rate, offset, start: cursor, soundSeconds, loop,
-        release: ringLength(soundSeconds),
-      });
+      events.push({ wantedMidi, sourceMidi, rate, offset, start: cursor, soundSeconds, loop });
     }
     cursor += dur * stepSeconds;
   }
@@ -701,12 +756,13 @@ export async function renderSequenceOffline(sequence, bpm, clicks = null) {
   if (!events.length) throw new Error('Add at least one note before exporting MP3.');
   const tail = 0.3;
   const duration = Math.max(cursor,
-    ...events.map(e => e.start + e.soundSeconds + e.release)) + tail;
+    ...events.map(e => e.start + e.soundSeconds)) + tail;
   if (duration > 600) throw new Error('MP3 export is limited to 10 minutes.');
 
   const sampleRate = 44100;
   const offline = new OfflineContext(2, Math.ceil(duration * sampleRate), sampleRate);
   const trim = createMasterBus(offline);
+  const struck = new Map();
 
   for (const event of events) {
     const source = offline.createBufferSource();
@@ -731,7 +787,8 @@ export async function renderSequenceOffline(sequence, bpm, clicks = null) {
     source.connect(event.loop ? shapeTone(offline, freq, event.start).connect(gain) : gain)
       .connect(trim);
     source.start(event.start, event.offset);
-    source.stop(Math.min(duration, done + 0.02));
+    source.stop(Math.min(duration, done));
+    damp(struck, event.wantedMidi, { g: gain, node: source, at: event.start, end: done });
   }
 
   if (clicks) clicks(offline, stepSeconds, cursor);

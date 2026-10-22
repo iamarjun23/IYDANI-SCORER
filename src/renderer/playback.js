@@ -38,6 +38,12 @@ const LEAD_IN = 0.08;
 
 let timer = null;
 let voices = [];
+// Where a paused run picks up: the sequence it was playing, the item it was
+// on, and what the score looked like then. An edit since makes the stored
+// sequence wrong, so resume starts over rather than playing a stale copy.
+let paused = null;
+let current = null;           // { seq, shown } of the run in progress
+const scoreSig = () => JSON.stringify([state.notes, state.bars, state.tala]);
 // The beat clock this transport sends out when the app is leading. Module
 // level, like `timer`, because stopPlay() has to be able to end the train
 // from outside the pump that started it. See midi-clock.js.
@@ -116,8 +122,20 @@ function setPlayIcon(playing) {
     : '<path d="M8 5v14l11-7z"/>';
 }
 
-export function startPlay() {
-  const seq = buildPlaySeq();
+// The part of the sequence inside [from, to) on the clock — the divisions
+// selected on the sheet. Repeats inside the part still repeat.
+function partOf(seq, { from, to }) {
+  const part = seq.filter(it => it.at >= from && it.at < to);
+  // A part can open on the tail of a note carried in from the division before;
+  // it has no attack of its own, so give it one or the part opens silent.
+  if (part[0]?.n.tie) part[0] = { ...part[0], n: { ...part[0].n, tie: false, full: part[0].n.dur } };
+  return part;
+}
+
+export function startPlay(range = null, seq = null, start = 0) {
+  paused = null;
+  seq = seq || (range ? partOf(buildPlaySeq(), range) : buildPlaySeq());
+  if (start >= seq.length) start = 0;
   if (!seq.length) return;
   state.playing = true;
   setPlayIcon(true);
@@ -133,11 +151,14 @@ export function startPlay() {
   // about to start.
   stopDriving();
 
-  let next = 0;                       // next item to SCHEDULE
+  let next = start;                   // next item to SCHEDULE
   let when = audioNow() + LEAD_IN;    // audio-clock time of seq[next]
   const times = [];                   // when each item starts, for the highlight
-  let shown = -1;                     // item the highlight is on
+  // One before `start`, not -1: times[] is only filled from `start` on, so a
+  // resume scanning from 0 hit a hole and the highlight never moved again.
+  let shown = start - 1;              // item the highlight is on
   let shownAt = null;
+  current = { seq, shown: start };
 
   // The metronome's grid, anchored to the SAME origin as the notes and
   // advanced in the same pump off the same beatSeconds(). That is what
@@ -149,8 +170,11 @@ export function startPlay() {
   // The grid advances whether or not the metronome is switched on, so turning
   // it on part-way through joins the count in the right place rather than
   // restarting it at 1 under the middle of a bar.
-  let clickWhen = when;
-  let clickBeat = 0;
+  // Starting part-way in (a part, or a resume), the count picks up at the next
+  // whole beat of the score, so the accent still lands on the division lines.
+  const startBeat = seq[start].at / TIME_UNITS_PER_BEAT;
+  let clickBeat = Math.ceil(startBeat - 1e-9);
+  let clickWhen = when + (clickBeat - startBeat) * beatSeconds(state.bpm);
 
   const pump = () => {
     const now = audioNow();
@@ -221,7 +245,7 @@ export function startPlay() {
     // Move the highlight to whatever is sounding now.
     let at = shown;
     while (at + 1 < times.length && times[at + 1] <= now) at++;
-    if (at >= 0) {
+    if (at >= start) {
       const item = seq[at];
       // A note longer than a beat holds one sound, but the highlight still
       // walks the beats underneath it, so the box keeps time with the pulse.
@@ -233,6 +257,7 @@ export function startPlay() {
       if (at !== shown || hlAt !== shownAt) {
         shown = at;
         shownAt = hlAt;
+        current.shown = at;
         state.hlIndex = item.i;
         state.hlAt = hlAt;
         render();
@@ -249,7 +274,11 @@ export function startPlay() {
   pump();
 }
 
-export function stopPlay() {
+// `keep` (true, not a click event) is a pause: the highlight stays on the
+// note it stopped at. Anything else is a real stop and forgets the pause.
+export function stopPlay(keep = false) {
+  if (keep !== true) { paused = null; keep = false; }
+  current = null;
   state.playing = false;
   clearInterval(timer);
   timer = null;
@@ -274,12 +303,41 @@ export function stopPlay() {
     stopClockSender(sender);
     sendClockStop();
   }
-  state.hlIndex = null;
-  state.hlAt = null;
+  if (!keep) {
+    state.hlIndex = null;
+    state.hlAt = null;
+  }
   render();
   setPlayIcon(false);
 }
 
+// Play/pause. Pausing stops the sound and remembers the note it was on; the
+// next press picks up there, at that note's start.
 export function togglePlay() {
-  if (state.playing) stopPlay(); else startPlay();
+  if (state.playing) {
+    const { seq, shown } = current;
+    stopPlay(true);
+    paused = { seq, at: Math.max(0, shown), sig: scoreSig(), from: state.playRange?.from };
+    return;
+  }
+  // A division picked since the pause (or with nothing paused) wins: play from
+  // its first note to the end of the score.
+  const from = state.playRange?.from;
+  if (paused && paused.sig === scoreSig() && from === paused.from) {
+    return startPlay(null, paused.seq, paused.at);
+  }
+  if (from == null) return startPlay();
+  const seq = buildPlaySeq();
+  const start = seq.findIndex(it => it.at >= from);
+  if (start < 0) return startPlay();
+  // Same as partOf(): a tied tail starting the run needs an attack of its own.
+  if (seq[start].n.tie) seq[start] = { ...seq[start], n: { ...seq[start].n, tie: false, full: seq[start].n.dur } };
+  startPlay(null, seq, start);
+}
+
+// Play only the divisions selected on the sheet (inspector.js keeps the range
+// in state.playRange, Shift+click extends it); nothing selected, the whole score.
+export function playPart() {
+  if (state.playing) stopPlay();
+  startPlay(state.playRange);
 }

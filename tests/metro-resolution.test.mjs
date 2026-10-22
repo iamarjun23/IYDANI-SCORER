@@ -126,26 +126,32 @@ is(totalUnits(), 10, 'tick then press writes each unit of silence exactly once')
 // ---------- whole beats of silence are bindu rests, wherever the key came up ----------
 
 // A key is released anywhere between two clicks. A click that wrote everything
-// it had cut each beat of silence at the click, so releasing half a beat after
-// one filled the staff with pairs of vasu rests.
+// it had cut each beat of silence at the click, so releasing part of a beat after
+// one filled the staff with pairs of vasu rests. The hold itself is written to
+// the danta: one beat plus `after`, nothing rounded to the click.
 for (const after of [1 / 2, 1 / 4, 3 / 8]) {
   reset();
   closeMetronomeSilence();
   addNote(0, { playSound: false });
   beginMetronomeEntry();
   const up = startHoldPromotion(0, state.sym);
-  clock += beatMs() / 2;
-  onMetronomeTick();         // one click heard while the key is down: a bindu
+  clock += beatMs();
+  onMetronomeTick();         // one click heard while the key is down
   clock += after * beatMs();
   up();
+  is(Math.round(state.notes[0].dur * 8), 8 + after * 8, `held 1+${after} beats is written 1+${after} beats`);
   endMetronomeEntry();
   wait(1 - after);
   for (let i = 0; i < 5; i++) { onMetronomeTick(); wait(1); }
   const rests = state.notes.slice(1);
-  is(rests.length, 4, `released ${after} of a beat after a click: one rest a beat`);
-  is(rests.every(n => n.sym === 'rest_symbol_1'), true, '...and every one a bindu rest');
-  play(1 / 8);               // the part-beat left over lands in front of the next note
-  is(totalUnits(), 8 + Math.round((5 + 1 - after) * 8) + 1, '...with no silence lost');
+  // The rest of the beat the key came up in, then one bindu rest a beat.
+  const part = rests.filter(n => n.dur < 1);
+  const whole = rests.filter(n => n.dur >= 1);
+  is(part.reduce((u, n) => u + n.dur, 0), 1 - after, `released ${after} into a beat: the beat is finished`);
+  is(whole.length, 4, '...then one rest a beat');
+  is(whole.every(n => n.sym === 'rest_symbol_1'), true, '...and every one a bindu rest');
+  play(1 / 8);
+  is(totalUnits(), 8 + after * 8 + Math.round((5 + 1 - after) * 8) + 1, '...with no silence lost');
 }
 
 // ---------- silence is measured in BEATS, so tempo scales it ----------
@@ -184,8 +190,7 @@ is(totalUnits(), 2, "'auto' fill writes no rests of its own");
 // TWO ticks land inside the hold rather than one, because with the metronome
 // running the ticks are what a hold is WORTH: each click a key is still down
 // through is one more beat of value. Two beats held is two clicks heard is a
-// guru — the same note this always asserted, reached by the count instead of
-// by the wall clock.
+// guru — two beats held, measured to the danta.
 reset();
 closeMetronomeSilence();
 const idx = state.notes.length;

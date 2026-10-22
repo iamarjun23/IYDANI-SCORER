@@ -19,24 +19,26 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'dng', privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 
-// Only bare .wav filenames directly inside renderer/samples ever resolve — the
-// name is reduced to its basename and re-checked against the directory, so a
-// crafted URL cannot walk out of it.
+// Only `<instrument folder>/<name>.wav` inside renderer/samples ever resolves —
+// exactly two path segments, each matched against a strict pattern (no dots in
+// the folder, so no `..`), and the joined path re-checked to sit directly in a
+// folder of SAMPLE_DIR, so a crafted URL cannot walk out of it.
 const SAMPLE_DIR = path.join(__dirname, 'renderer', 'samples');
 
 function registerSampleProtocol() {
   protocol.handle('dng', (request) => {
-    let name;
+    let parts;
     try {
-      name = path.basename(decodeURIComponent(new URL(request.url).pathname));
+      parts = decodeURIComponent(new URL(request.url).pathname).split('/').filter(Boolean);
     } catch {
       return new Response('bad request', { status: 400 });
     }
-    if (!/^[A-Za-z0-9._-]+\.wav$/.test(name)) {
+    const [dir, name] = parts;
+    if (parts.length !== 2 || !/^[a-z0-9-]+$/.test(dir) || !/^[A-Za-z0-9_-]+\.wav$/.test(name)) {
       return new Response('not found', { status: 404 });
     }
-    const file = path.join(SAMPLE_DIR, name);
-    if (file !== path.join(SAMPLE_DIR, path.basename(file))) {
+    const file = path.join(SAMPLE_DIR, dir, name);
+    if (path.dirname(path.dirname(file)) !== SAMPLE_DIR) {
       return new Response('not found', { status: 404 });
     }
     return net.fetch(pathToFileURL(file).toString());

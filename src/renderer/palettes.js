@@ -9,8 +9,6 @@ import { repeatGlyphSVG } from './notation.js';
 import { addRest } from './score.js';
 import { setBreakTool, isBreakTool } from './breaks.js';
 import { setRepeatTool, repeatToolState } from './repeats.js';
-import { setOct, buildPiano } from './piano.js';
-import { l10n } from './i18n.js';
 
 // Icon dimensions in each palette grid. Centralised so it's one edit when
 // the tool sidebar needs resizing.
@@ -67,43 +65,15 @@ const TRI_MARK = '<svg class="mk-t" viewBox="0 0 12 11" aria-hidden="true">'
   + '<polygon points="6,1.2 11,9.8 1,9.8" fill="none" stroke="#111" stroke-width="1.5"'
   + ' stroke-linejoin="round"/></svg>';
 
-//
-// The marks row is also a row of SWITCHES, one per tone, for the sthayi the
-// legend is showing — which is state.oct, the same sthayi the piano's tabs
-// select, stepped from here by the two arrows either side of the table. A tone
-// switched off is a blank white cell; score.js refuses to write it.
 export function buildTones() {
-  const on = state.tones[state.oct + 1];
   const head = `<tr>${TONE_LETTER.map(l => `<td>${l}</td>`).join('')}</tr>`;
-  const marks = `<tr>${TONE_MARK.map((m, semi) => {
-    const cls = `mk${on[semi] ? '' : ' off'}`;
-    if (m === 't') return `<td class="${cls}" data-semi="${semi}">${TRI_MARK}</td>`;
-    return `<td class="${cls}" data-semi="${semi}"><span class="mk-${m}"></span></td>`;
-  }).join('')}</tr>`;
+  const marks = `<tr>${TONE_MARK.map(m => (m === 't'
+    ? '<td class="mk">' + TRI_MARK + '</td>'
+    : '<td class="mk"><span class="mk-' + m + '"></span></td>')).join('')}</tr>`;
   document.getElementById('tonesTable').innerHTML = head + marks;
-  const name = document.getElementById('toneName');
-  name.dataset.i18n = ['Mandra', 'Madhya', 'Taara'][state.oct + 1];
-  name.textContent = l10n(name.dataset.i18n);
-  document.getElementById('tonePrev').disabled = state.oct <= -1;
-  document.getElementById('toneNext').disabled = state.oct >= 1;
 }
 
-export function initTones() {
-  buildTones();
-  document.getElementById('tonesTable').addEventListener('click', e => {
-    const td = e.target.closest('td.mk');
-    if (!td) return;
-    const row = state.tones[state.oct + 1];
-    row[+td.dataset.semi] = !row[+td.dataset.semi];
-    buildTones();
-    buildPiano();
-  });
-  document.getElementById('tonePrev').addEventListener('click', () => setOct(state.oct - 1));
-  document.getElementById('toneNext').addEventListener('click', () => setOct(state.oct + 1));
-  document.addEventListener('oct:changed', buildTones);
-  // Another document's selection was swapped in (tab, file, import).
-  document.addEventListener('tones:changed', () => { buildTones(); buildPiano(); });
-}
+export const initTones = buildTones;
 
 // A repeat glyph ARMS the tool rather than inserting anything: the pair is
 // then placed on the sheet by two clicks, the way the Break tool is armed and
