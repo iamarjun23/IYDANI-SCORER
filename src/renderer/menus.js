@@ -13,6 +13,7 @@ import { newDoc, saveDoc, buildTabs } from './tabs.js';
 import { toggleTheme } from './theme.js';
 import { openLegend } from './legend.js';
 import { openAbout } from './about.js';
+import { checkForUpdates } from './updater-ui.js';
 import { openMonitor } from './midi-monitor.js';
 import { exportMP3 } from './mp3.js';
 import { exportMIDI } from './midi-export.js';
@@ -122,6 +123,7 @@ function doAct(a) {
     case 'print':      window.print(); break;
     case 'legend':     openLegend(); break;
     case 'about':      openAbout(); break;
+    case 'checkUpdates': checkForUpdates(); break;
     case 'midiMonitor': openMonitor(); break;
     case 'undo':       undo(); break;
     case 'redo':       redo(); break;

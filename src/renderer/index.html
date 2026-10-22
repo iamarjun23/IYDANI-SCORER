@@ -283,15 +283,18 @@
       box-shadow: 0 0 5px #d8513a
     }
 
-    /* The update chip (updater-ui.js). Dressed like the Online pill; it only
-       exists while an update is downloading or waiting to be installed. */
-    .upd-chip { cursor: default; font-family: inherit; white-space: nowrap; flex-shrink: 0 }
+    /* The update button (updater-ui.js). Dressed like the Online pill; shown
+       whenever the app can update (hidden in a plain browser), and the
+       progress bar only while an update is downloading. */
+    .upd-chip { cursor: pointer; font-family: inherit; white-space: nowrap; flex-shrink: 0 }
     .upd-chip[hidden] { display: none }
     .upd-chip svg { width: 14px; height: 14px }
+    .upd-chip:hover { background: var(--hover) }
+    .upd-chip[data-state="checking"], .upd-chip[data-state="downloading"] { cursor: default }
     .upd-bar { width: 40px; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden }
     .upd-bar i { display: block; height: 100%; width: 0; background: var(--ink-2); transition: width .3s }
-    .upd-chip[data-state="ready"] { cursor: pointer; background: var(--accent-soft); color: var(--accent); border-color: var(--accent) }
-    .upd-chip[data-state="ready"] .upd-bar { display: none }
+    .upd-chip:not([data-state="downloading"]) .upd-bar { display: none }
+    .upd-chip[data-state="ready"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent) }
     .upd-chip[data-state="ready"]:hover { background: var(--hover) }
     #pop .upd-pop { padding: 8px 10px; width: 250px }
     #pop .upd-pop b { display: block; font-size: 13px; color: var(--ink) }

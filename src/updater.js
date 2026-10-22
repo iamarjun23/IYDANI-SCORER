@@ -2,6 +2,17 @@ const { autoUpdater } = require('electron-updater');
 const { app, ipcMain } = require('electron');
 
 function setupAutoUpdater(mainWindow) {
+  // Registered before the dev bail-out so the menubar button can say WHY it
+  // did nothing: `npm start` has no app-update.yml to read. Returns the new
+  // version or null — never the raw result, whose download promise cannot
+  // cross IPC. removeHandler: a mac re-activation calls this again.
+  ipcMain.removeHandler('updater:check');
+  ipcMain.handle('updater:check', async () => {
+    if (!app.isPackaged) throw new Error('Updates only work in the installed app');
+    const r = await autoUpdater.checkForUpdates();
+    return r?.isUpdateAvailable ? r.updateInfo.version : null;
+  });
+
   // Don't run updates in development mode
   if (!app.isPackaged) {
     return;
@@ -50,11 +61,7 @@ function setupAutoUpdater(mainWindow) {
     mainWindow.webContents.send('updater:error', err.message);
   });
 
-  // Setup IPC Handlers
-  ipcMain.handle('updater:check', async () => {
-    return autoUpdater.checkForUpdatesAndNotify();
-  });
-
+  ipcMain.removeHandler('updater:install');
   ipcMain.handle('updater:install', () => {
     autoUpdater.quitAndInstall(false, true); // isSilent=false, isForceRunAfter=true
   });

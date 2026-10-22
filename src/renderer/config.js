@@ -1351,6 +1351,7 @@ export const MENUS = {
   Help: [
     ['Notation Guide — what every symbol means', 'legend', ''],
     ['MIDI Monitor — everything the keyboard sends', 'midiMonitor', ''],
+    ['Check for updates…', 'checkUpdates', ''],
     [`About ${APP_TITLE}`, 'about', ''],
     ['—'],
     ['Q W E R T Y U  →  taara  S R G M P D N', 'noop', ''],
