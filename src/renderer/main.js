@@ -6,7 +6,7 @@ import { state, docs, getActiveDoc } from './state.js';
 import { BPM } from './config.js';
 import { render } from './notation.js';
 import { updateUndoButtons } from './history.js';
-import { clearBars } from './score.js';
+import { clearBars, loadPreset } from './score.js';
 import { initTones, buildPalettes } from './palettes.js';
 import { buildPiano, buildSpanPicker, buildMidiKeyPicker } from './piano.js';
 import { buildKeyMap, installKeymapUI } from './keymap.js';
@@ -108,9 +108,7 @@ function initNetworkIndicator() {
 function seedFirstDoc() {
   // The last session, if there is one — see the autosave note in tabs.js.
   if (restoreDocs()) return;
-  state.title = 'Untitled';
-  state.preset = null;
-  document.getElementById('titleVal').textContent = state.title;
+  loadPreset('twinkle');
   docs.push({
     notes: state.notes,
     bars: state.bars,

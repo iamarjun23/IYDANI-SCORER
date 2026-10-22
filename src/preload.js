@@ -8,7 +8,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('hamsleka', {
   platform: process.platform,
   versions: {
-    app: '0.21.4',
+    app: '0.21.5',
     electron: process.versions.electron,
     chrome: process.versions.chrome,
     node: process.versions.node,
