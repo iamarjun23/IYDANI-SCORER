@@ -1345,7 +1345,9 @@ export const MENUS = {
     ['Toggle Page View', 'page', ''],
     ['Toggle Row Marks', 'gutter', ''],
   ],
-  Plugins: [['No plugins installed', 'noop', '']],
+  // Sound plugins: one row per INSTRUMENTS entry, ticked by menus.js. Picking
+  // one is the same as picking it in the toolbar's instrument dropdown.
+  Plugins: INSTRUMENTS.map(i => [i.name, `inst:${i.id}`, '']),
   Help: [
     ['Notation Guide — what every symbol means', 'legend', ''],
     ['MIDI Monitor — everything the keyboard sends', 'midiMonitor', ''],

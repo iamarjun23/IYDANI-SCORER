@@ -2,7 +2,7 @@
 // pickers that anchor to the toolbar. All of these share one popover.
 
 import { state } from './state.js';
-import { MENUS, TITLES } from './config.js';
+import { MENUS, TITLES, INSTRUMENTS } from './config.js';
 import { shortcutLabel } from './platform.js';
 import { show, hide, pop } from './popover.js';
 import { openAuth } from './auth-ui.js';
@@ -93,6 +93,8 @@ const CHECKED = {
   holdTime:    () => state.holdWrites === 'time',
   holdFixed:   () => state.holdWrites === 'fixed',
   holdPalette: () => state.holdWrites === 'palette',
+  // The Plugins menu's instruments, another radio group.
+  ...Object.fromEntries(INSTRUMENTS.map(i => [`inst:${i.id}`, () => state.instrument === i.id])),
 };
 
 function menuHtml(name) {
@@ -139,6 +141,14 @@ function doAct(a) {
     // bindu, however long it is held.
     case 'holdFixed':   setSetting('holdWrites', 'fixed'); break;
     case 'holdPalette': setSetting('holdWrites', 'palette'); break;
+    default:
+      // An instrument goes through the toolbar dropdown, so the two never
+      // disagree and the save / load / preview Sa live in one place (toolbar.js).
+      if (a.startsWith('inst:')) {
+        const sel = document.getElementById('instrument');
+        sel.value = a.slice(5);
+        sel.dispatchEvent(new Event('change'));
+      }
   }
 }
 
