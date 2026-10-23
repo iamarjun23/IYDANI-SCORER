@@ -18,6 +18,14 @@ function setupAutoUpdater(mainWindow) {
     return;
   }
 
+  // ponytail: an ad-hoc-signed mac build cannot install its own update
+  // (Squirrel.Mac checks the signature), so on mac Help ▸ Check for updates
+  // only reports the version. Drop this once identity/notarize are on.
+  if (process.platform === 'darwin') {
+    autoUpdater.autoDownload = false;
+    return;
+  }
+
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
