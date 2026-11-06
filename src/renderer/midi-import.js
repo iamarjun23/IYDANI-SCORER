@@ -371,7 +371,7 @@ export function pickMelody(notes, trackNames = new Map()) {
       if (n.start <= prev.start) continue;               // chord tone under the top note
       if (n.start < prev.end) prev.end = n.start;        // overlap: cut the held note short
     }
-    line.push({ start: n.start, end: Math.max(n.end, n.start + 1), midi: n.midi });
+    line.push({ start: n.start, end: Math.max(n.end, n.start + 1), midi: n.midi, vel: n.vel });
   }
   return line;
 }
@@ -442,10 +442,30 @@ export function midiToScore(buffer, options = {}) {
   const { notes, tpq, bpm: sourceBpm, trackNames } = parseMidi(buffer);
   const line = pickMelody(notes, trackNames);
   if (!line.length) throw new Error('No notes found in this MIDI file.');
+  return lineToScore(line, { tpq, sourceBpm, saMidi, scale: pickScale(line, tpq, sourceBpm) });
+}
 
-  const scale = pickScale(line, tpq, sourceBpm);
+// A recorded TAKE — the raw performance a MIDI keyboard sent, kept the way a
+// DAW keeps it: `{ midi, on, off, vel }` with on/off in milliseconds, nothing
+// rounded. The notation is worked out from it afterwards, onto `grid` units
+// (1 = danta, 2 = praya, 4 = vasu, 8 = a beat), the way a DAW quantizes a
+// region. Time zero is the first attack. `beatMs` is how long a beat was while
+// it was played — the same beat live entry measured holds against.
+export function takeToScore(events, { beatMs, saMidi = 60, grid = 1 } = {}) {
+  const played = events.filter(e => e.off != null);
+  if (!played.length) throw new Error('Nothing was played in this take.');
+  const t0 = Math.min(...played.map(e => e.on));
+  const notes = played.map(e => ({ start: e.on - t0, end: e.off - t0, midi: e.midi, vel: e.vel }));
+  // tpq = ms per beat makes a millisecond one tick. The tempo is not rescaled:
+  // the take was played against a beat the player chose.
+  return lineToScore(pickMelody(notes), { tpq: beatMs, sourceBpm: 60000 / beatMs, saMidi, scale: 1, grid });
+}
+
+function lineToScore(line, { tpq, sourceBpm, saMidi, scale, grid = 1 }) {
   const shift = octaveShiftFor(line.map(n => n.midi), saMidi) * 12;
-  const toUnits = ticks => (ticks / tpq) * scale * UNITS;
+  // Quantize: every attack and length snaps to the grid. grid 1 is the danta,
+  // which is what rounding to whole units always did.
+  const toUnits = ticks => Math.round((ticks / tpq) * scale * UNITS / grid) * grid;
   const out = [];
   let cursor = 0;                          // where the written score has got to
   let folded = 0;                          // notes the staff's range could not hold
@@ -463,7 +483,8 @@ export function midiToScore(buffer, options = {}) {
     const room = line[k + 1]
       ? Math.max(MIN_UNITS, Math.min(Math.round(toUnits(line[k + 1].start)) - start, MAX_UNITS))
       : null;
-    const held = Math.max(MIN_UNITS, Math.round(toUnits(n.end - n.start)));
+    // Never shorter than one grid step: a quantized note cannot round to nothing.
+    const held = Math.max(MIN_UNITS, grid, toUnits(n.end - n.start));
     // A gap SHORTER than the note in front of it is ARTICULATION, not silence.
     // Staccato and a lifted finger both leave one, and writing each as a rest
     // doubles the glyph count for music that reads as a plain run of notes — so
@@ -482,6 +503,8 @@ export function midiToScore(buffer, options = {}) {
     // `room` is also a CAP, not just a target: a glyph that overruns the next
     // attack drags every note after it off the grid. See glyphForUnits().
     out.push(noteFor(n.midi + shift, span, saMidi, room ?? Infinity));
+    // Only a take carries one, and only once the device proved it senses touch.
+    if (n.vel != null) out[out.length - 1].vel = n.vel;
     cursor = Math.max(cursor, start) + out[out.length - 1].units;
 
     // The staff writes 36 semitones. A melody wider than that cannot be written

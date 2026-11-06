@@ -58,7 +58,7 @@ const beatMs = () => beatSeconds(state.bpm) * 1000;
 // bindu, and how long a gap has to be to earn a bindu rest. See ENTRY_BEAT_MS
 // for why that is a flat second with no metronome running and the tempo when
 // there is one.
-const entryBeatMs = () => (state.metroOn ? beatMs() : ENTRY_BEAT_MS);
+export const entryBeatMs = () => (state.metroOn ? beatMs() : ENTRY_BEAT_MS);
 
 const holdTickMs = () => (entryBeatMs() / TIME_UNITS_PER_BEAT) * HOLD_TICK_UNITS;
 const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());

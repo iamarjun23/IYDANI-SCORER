@@ -1,0 +1,67 @@
+name: release
+
+# Push a v* tag (npm run release does it) and this builds Windows and Mac and
+# publishes ONE GitHub Release carrying both, which is where installed apps
+# look for updates: latest.yml for Windows, latest-mac.yml for Mac.
+# Run it from the Actions tab instead for a test build: same files, uploaded
+# as the run's Artifacts, nothing released.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            cmd: npx electron-builder --win nsis --x64 --publish never
+            files: |
+              release/*.exe
+              release/*.exe.blockmap
+              release/latest.yml
+          - os: macos-latest
+            cmd: npm run dist:mac
+            files: |
+              release/*.dmg
+              release/*.zip
+              release/*.blockmap
+              release/latest-mac.yml
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      # The release is named after package.json; a tag that disagrees would
+      # publish files whose latest.yml points at a version that is not there.
+      - if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          v="v$(node -p "require('./package.json').version")"
+          [ "$v" = "$GITHUB_REF_NAME" ] || { echo "::error::tag $GITHUB_REF_NAME but package.json is $v"; exit 1; }
+      - run: npm ci
+      - run: ${{ matrix.cmd }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: IYDANI-${{ runner.os }}
+          path: ${{ matrix.files }}
+
+  # Only once BOTH builds exist, so an app never finds a release that has
+  # its update file missing.
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "${GITHUB_REF_NAME#v}" --generate-notes

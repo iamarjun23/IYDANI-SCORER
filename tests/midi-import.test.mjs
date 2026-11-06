@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { buildMidiFile } from '../src/renderer/midi-file.js';
 import {
   SEMI_TO_WRITTEN, glyphForUnits, noteFor, restsFor, parseMidi, pickMelody, midiToScore,
-  scoreGroup, octaveShiftFor,
+  scoreGroup, octaveShiftFor, takeToScore,
 } from '../src/renderer/midi-import.js';
 import { semiOf, SOUND, REST_MAP, TIME_UNITS_PER_BEAT, DOT_MULT } from '../src/renderer/config.js';
 import { scoreRows } from '../src/renderer/notation.js';
@@ -228,5 +228,36 @@ assert.equal(
 // ---------- garbage in ----------
 
 assert.throws(() => parseMidi(new Uint8Array([1, 2, 3, 4])), /MThd/);
+
+// ---------- a recorded take, quantized afterwards ----------
+
+// Four sloppy half-beat notes at 120 bpm (500 ms a beat). Rounded to the danta
+// the late second attack leaves a danta rest; snapped to the vasu grid it is
+// four clean vasus, which is what quantize is for.
+{
+  const take = [
+    { midi: 60, on: 1000, off: 1230, vel: 90 },
+    { midi: 62, on: 1290, off: 1460, vel: null },
+    { midi: 64, on: 1470, off: 1700, vel: null },
+    { midi: 65, on: 1780, off: 2010, vel: null },
+  ];
+  const loose = takeToScore(take, { beatMs: 500, grid: 1 }).notes;
+  assert.ok(loose.some(n => n.type === 'rest'), 'danta grid should keep the late attack');
+  const tight = takeToScore(take, { beatMs: 500, grid: 4 }).notes;
+  assert.deepEqual(tight.map(n => n.type), ['note', 'note', 'note', 'note']);
+  assert.deepEqual(tight.map(unitsOf), [4, 4, 4, 4]);
+  assert.deepEqual(tight.map(n => semiOf(n.svaraIndex, n.head)), [0, 2, 4, 5]);
+  // Velocity rides along only where the device proved it has one.
+  assert.equal(tight[0].vel, 90);
+  assert.ok(!('vel' in tight[1]));
+  // A chord in a take is reduced to its top voice, as an imported file is.
+  const chord = takeToScore([
+    { midi: 60, on: 0, off: 500, vel: null }, { midi: 64, on: 0, off: 500, vel: null },
+  ], { beatMs: 500, grid: 8 }).notes;
+  assert.equal(chord.length, 1);
+  assert.equal(semiOf(chord[0].svaraIndex, chord[0].head), 4);
+  // A key still down has no length yet; a take of only that is empty.
+  assert.throws(() => takeToScore([{ midi: 60, on: 0, off: null }], { beatMs: 500 }));
+}
 
 console.log('MIDI import tests passed');

@@ -4342,6 +4342,16 @@
         </select>
         <!-- Whether the beat is actually being shared over MIDI transport. -->
         <span class="midi-sync-state" id="midiSyncState" hidden></span>
+        <!-- A take: the staff is written live as always, and the raw
+             performance is kept so it can be re-quantized afterwards. -->
+        <button class="midi-btn idle" id="midiRec" type="button" title="Record a take: keeps what you played so it can be quantized afterwards" hidden><span class="midi-dot"></span><span id="midiRecText">Record</span></button>
+        <select id="midiQuant" class="midi-dev" title="Rewrite the last take onto a grid, or as it was written live" hidden>
+          <option value="0">As played (live)</option>
+          <option value="1">Quantize: danta</option>
+          <option value="2">Quantize: praya</option>
+          <option value="4">Quantize: vasu</option>
+          <option value="8">Quantize: bindu</option>
+        </select>
       </div>
       <div class="dock-body">
         <div class="piano-wrap">

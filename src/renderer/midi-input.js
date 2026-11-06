@@ -33,9 +33,11 @@ import { state } from './state.js';
 import { TONE_LETTER, MIN_BPM, MAX_BPM, beatSeconds } from './config.js';
 import { midiOutputs, allNotesOff, deviceSink } from './midi-out.js';
 import { setSetting } from './settings.js';
-import { SEMI_TO_WRITTEN } from './midi-import.js';
+import { SEMI_TO_WRITTEN, takeToScore } from './midi-import.js';
+import { pushHist } from './history.js';
+import { render } from './notation.js';
 import {
-  addNote, beginMetronomeEntry, closeMetronomeSilence, endMetronomeEntry, startHoldPromotion,
+  entryBeatMs, addNote, beginMetronomeEntry, closeMetronomeSilence, endMetronomeEntry, startHoldPromotion,
 } from './score.js';
 import {
   freqOf, startSustain, stopSustain, audioNow, audioTimeForPerf, outputLatency,
@@ -52,7 +54,7 @@ import {
   newTapTempo, tapTempo, tapStale, TAP_TIMEOUT_MS,
 } from './midi-clock.js';
 import {
-  highlightSemi, highlightDeviceKey, buildPiano, writtenFor, deviceFreq, deviceRange, setOct,
+  highlightSemi, highlightDeviceKey, buildPiano, writtenFor, deviceFreq, deviceRange, setOct, deviceShift,
 } from './piano.js';
 import {
   newRangeTracker, resetRangeTracker, noteSeen, noteName, newVelocityProbe,
@@ -70,6 +72,55 @@ export function writtenNoteFor(midi) {
   const placed = writtenFor(midi);
   if (!placed) return null;
   return { ...SEMI_TO_WRITTEN[placed.semi], semi: placed.semi, oct: placed.oct };
+}
+
+// ---------- the take ----------
+//
+// Live entry decides the symbol WHILE the key is held, and what was actually
+// played is gone once it has. A DAW does the reverse: it keeps the performance
+// — every key's attack, release and velocity at full resolution — and works the
+// notation out of it afterwards, as often as you like. Recording does both: the
+// staff is written live exactly as before, and the raw events are kept beside
+// it so the take can be re-quantized onto a grid, or put back as played.
+//
+// Events are stored in STAFF pitch (the auto-centre shift taken off), so the
+// converter places a key where writtenFor() placed it.
+let take = null;   // { from, beatMs, events, open: Map | null, live, written }
+const perfNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+export function isRecording() { return !!take?.open; }
+export function hasTake() { return !!take?.live; }
+
+export function startTake() {
+  take = { from: state.notes.length, beatMs: entryBeatMs(), events: [], open: new Map(), live: null, written: null };
+}
+
+export function stopTake() {
+  if (!take?.open) return;
+  // Every key up first: a note still growing would change the live tail after
+  // it has been snapshotted.
+  releaseAll();
+  take.open = null;
+  if (!take.events.length) { take = null; return; }
+  take.live = structuredClone(state.notes.slice(take.from));
+  take.written = JSON.stringify(take.live);
+}
+
+// grid 0 puts back what live entry wrote; otherwise units, 1 = danta. Refuses
+// ('edited') when the score past the take has changed since it was last
+// written — quantizing would silently throw those edits away.
+export function quantizeTake(grid) {
+  if (!take?.live) return 'none';
+  if (JSON.stringify(state.notes.slice(take.from)) !== take.written) return 'edited';
+  const notes = grid
+    ? takeToScore(take.events, { beatMs: take.beatMs, saMidi: state.saMidi ?? 60, grid }).notes
+    : structuredClone(take.live);
+  pushHist();
+  state.preset = null;
+  state.notes = [...state.notes.slice(0, take.from), ...notes];
+  take.written = JSON.stringify(state.notes.slice(take.from));
+  render();
+  return 'ok';
 }
 
 // ---------- live device ----------
@@ -1030,8 +1081,16 @@ export function noteOn(midi, velocity = 64, at) {
   // null until this device has proved it has a velocity sensor — addNote()
   // writes no `vel` at all for null, which is what a note with no dynamic to
   // record is supposed to look like.
+  const vel = noteVelocity(velocity);
+  // Only a key the staff can write joins the take: an unwritable one would be
+  // folded in by the quantizer, and could drag the whole take an octave over.
+  if (take?.open) {
+    const ev = { midi: midi - deviceShift() * 12, on: at ?? perfNow(), off: null, vel };
+    take.events.push(ev);
+    take.open.set(midi, ev);
+  }
   const index = addNote(w.svaraIndex, {
-    playSound: false, sym, head: w.head, oct: w.oct, vel: noteVelocity(velocity),
+    playSound: false, sym, head: w.head, oct: w.oct, vel,
   });
   // null: the tone is switched off in the sheet's legend. The key still sounds
   // and lights; there is just no note to grow and no entry to count as held.
@@ -1090,6 +1149,8 @@ export function noteOff(midi, at) {
   const h = held.get(midi);
   if (!h) return;
   held.delete(midi);
+  const ev = take?.open?.get(midi);
+  if (ev) { ev.off = at ?? perfNow(); take.open.delete(midi); }
   publishHeld();
   // Unlit on the key coming UP, never on the pedal: CC 64 holds the SOUND on,
   // but the finger has left the key and the picture is of the keyboard.
@@ -1241,6 +1302,28 @@ export function installMidiUI() {
   const sink = document.getElementById('midiSink');
   const sync = document.getElementById('midiSync');
   const syncState = document.getElementById('midiSyncState');
+  const rec = document.getElementById('midiRec');
+  const recTxt = document.getElementById('midiRecText');
+  const quant = document.getElementById('midiQuant');
+  const paintTake = () => {
+    if (rec) {
+      rec.classList.toggle('live', isRecording());
+      rec.classList.toggle('idle', !isRecording());
+      recTxt.textContent = isRecording() ? 'Stop' : 'Record';
+    }
+    if (quant) quant.hidden = isRecording() || !hasTake();
+  };
+  rec?.addEventListener('click', () => {
+    if (isRecording()) stopTake();
+    else { startTake(); if (quant) quant.value = '0'; }
+    paintTake();
+  });
+  quant?.addEventListener('change', () => {
+    const r = quantizeTake(Number(quant.value));
+    if (r === 'edited') {
+      alert('The score has changed since this take was written, so quantizing it would overwrite those edits.');
+    }
+  });
 
   sel?.addEventListener('change', () => setMidiDevice(sel.value || null));
 
@@ -1304,6 +1387,8 @@ export function installMidiUI() {
       syncState.classList.toggle('live', st.cls === 'live');
       syncState.classList.toggle('want', st.cls === 'want');
     }
+    if (rec) rec.hidden = !s.listening;
+    paintTake();
     if (s.listening && state.midiSync === 'follow') ensureAudioClickSync();
     box?.classList.toggle('live', s.listening);
     const shape = `${s.listening}|${state.midiDeviceName}`;
