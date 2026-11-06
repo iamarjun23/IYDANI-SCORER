@@ -1,7 +1,7 @@
 {
   "name": "iydani-scorer",
   "productName": "IYDANI",
-  "version": "0.21.7",
+  "version": "0.21.8",
   "description": "IYDANI SCORER — Write - N - Read - N - Play. Desktop DNG notation editor.",
   "main": "src/main.js",
   "author": {
@@ -17,7 +17,7 @@
     "build:installer": "electron-builder --win nsis --x64",
     "build:mac": "electron-builder --mac",
     "dist": "electron-builder --win --x64 --publish never",
-    "release": "electron-builder --win nsis --x64 --publish always",
+    "release": "node -e \"const v='v'+require('./package.json').version,x=c=>require('child_process').execSync(c,{stdio:'inherit'});x('git tag '+v);x('git push origin HEAD '+v)\"",
     "dist:mac": "electron-builder --mac --publish never",
     "check": "node tools/check-imports.mjs",
     "test": "npm run test:layout && npm run test:notation && npm run test:pdf && npm run test:mp3 && npm run test:midi && npm run test:midi-import && npm run test:midi-input && npm run test:midi-webmidi && npm run test:midi-clock && npm run test:midi-follow && npm run test:midi-monitor && npm run test:midi-highlight && npm run test:midi-memory && npm run test:metro-entry && npm run test:metronome && npm run test:pitch && npm run test:audio && npm run test:keybinds && npm run test:midi-device && npm run test:timesig && npm run test:hold-value && npm run test:metro-resolution && npm run test:breaks && npm run test:follow && npm run test:section && npm run test:autosave && npm run test:i18n && npm run test:lesson",
