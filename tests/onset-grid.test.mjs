@@ -51,7 +51,10 @@ onMetronomeTick(1000);
 // every time. Chained, the staff ran 0.4 danta ahead per note.
 for (let k = 0; k < 8; k++) play(1000 - 20 + k * BEAT, 4.6 * BEAT / U);
 assert.deepEqual(onsets(), [0, 8, 16, 24, 32, 40, 48, 56], 'onsets drifted off the beat grid');
-assert.equal(Math.round(state.notes[0].dur * U), 5, 'release is placed on the grid too');
+// The key went down 20 ms early and came up 4.6 dantas later — 4.28 dantas
+// after the CLICK, so 4. (It read 5 while an early first key shifted the whole
+// grid late by its own earliness.)
+assert.equal(Math.round(state.notes[0].dur * U), 4, 'release is placed on the grid too');
 
 // Legato: the next key arrives while the last is still down. The held note
 // ends where the new one starts.

@@ -60,6 +60,25 @@ const TAKE_IDLE_BEATS = 8;
 const gridPos = t => grid.units + ((t - grid.at) / grid.beat) * TIME_UNITS_PER_BEAT;
 const totalUnits = () => state.notes.reduce((u, n) => u + unitsOfNote(n), 0);
 
+// INPUT QUANTIZE, as Logic's record quantize does it: every edge a key puts on
+// the grid — where a note starts, where it ends — is rounded to the chosen
+// value instead of to the danta. A danta (1) is the finest the notation writes,
+// so it is "off"; praya (2), vasu (4) and bindu (8) are the coarser grids. At
+// fast tempos half a danta is under 32 ms, tighter than a player's hands, and
+// the staff filled with praya·danta splits nobody meant.
+// And, as in Logic, it is NON-DESTRUCTIVE: every recorded note keeps its raw
+// edges in `note.take` ({id, from, on, off, at, min}, absolute timing units on
+// the take's clock), so requantizeTakes() can re-snap a take at any grid —
+// including back to off — after it was played. See requantizeTakes().
+const quantum = () => ([1, 2, 4, 8].includes(state.quantize) ? state.quantize : 1);
+// The raw onset of the key closeMetronomeSilence() just placed, waiting for
+// startHoldPromotion() to learn which note it became.
+let pendingRaw = null;
+let takeSeq = 0;
+const snap = u => Math.round(u / quantum()) * quantum();
+// The shortest a recorded note may be: one quantum (and never under a danta).
+const minRecorded = () => Math.max(MIN_HOLD_UNITS, quantum());
+
 // The shortest single glyph the notation has — a danta, one unit. Derived
 // rather than written as 1 so that adding a shorter SOUND lowers the floor with
 // it instead of leaving a value nothing can play.
@@ -142,14 +161,18 @@ export function addNote(svi, {
 function setHeldUnits(index, units) {
   const note = state.notes[index];
   if (!note || note.type !== 'note') return;
+  if (writeUnits(note, units)) renderSoon();
+}
+
+function writeUnits(note, units) {
   const dur = units / TIME_UNITS_PER_BEAT;
-  if (note.dur === dur) return;
+  if (note.dur === dur) return false;
   const g = glyphFor(units);
   note.sym = g.sym;
   note.dot = g.dot;
   note.deco = SOUND[g.sym].deco;
   note.dur = dur;
-  renderSoon();
+  return true;
 }
 
 // Edit a note's played length from the inspector. Durations are stored in the
@@ -449,12 +472,22 @@ export function startHoldPromotion(index, initialSym = state.sym, pressedAt) {
   // begin/endMetronomeEntry() and counts keys through metroEntry.held, which
   // has never had anything to do with heldPromotions, and endMetronomeEntry()
   // starts the shared clock itself.
-  if (state.holdWrites === 'fixed') return () => {};
-
   const base = SOUND[initialSym] ? initialSym : 'bindu';
   const floorUnits = state.holdWrites === 'palette'
     ? Math.round(SOUND[base].dur * TIME_UNITS_PER_BEAT)
-    : MIN_HOLD_UNITS;
+    : minRecorded();
+  // Raw timing for re-quantizing later. `at` is where the note actually landed,
+  // so a later edit ahead of the take shows up as a shift and is carried along.
+  // A fixed-mode note keeps no `off`: its length is the palette's, not played.
+  const raw = pendingRaw;
+  pendingRaw = null;
+  if (raw && state.notes[index]?.type === 'note') {
+    state.notes[index].take = {
+      ...raw, at: unitsBefore(index),
+      ...(state.holdWrites === 'palette' ? { min: floorUnits } : {}),
+    };
+  }
+  if (state.holdWrites === 'fixed') return () => {};
   // `at` is the wall clock this hold was last MEASURED at, exactly as
   // metroEntry.idleAt is for silence. `units` is what has already been counted
   // against it, tempo by tempo; the two together are the whole record, and
@@ -495,12 +528,14 @@ export function startHoldPromotion(index, initialSym = state.sym, pressedAt) {
       const since = end != null ? end - promotion.at : Math.max(0, nowMs() - promotion.at);
       // On the grid the RELEASE is placed too, so the length is where the key
       // came up minus where the note starts — both edges on the clock.
+      const take = state.notes[index]?.take;
+      if (grid && take) take.off = gridPos(end ?? nowMs());
       const elapsed = grid
-        ? gridPos(end ?? nowMs()) - unitsBefore(index)
-        : heldUnits(promotion, since);
+        ? snap(gridPos(end ?? nowMs())) - unitsBefore(index)
+        : snap(heldUnits(promotion, since));
       const held = Math.min(
         HOLD_CAP_BEATS * TIME_UNITS_PER_BEAT,
-        Math.max(promotion.floorUnits, Math.round(elapsed)),
+        Math.max(promotion.floorUnits, elapsed),
       );
       setHeldUnits(index, held);
     }
@@ -588,7 +623,7 @@ export function ensureHoldPromotionClock() {
 export function tickScoreClock(dtMs) {
   if (grid) {
     const now = nowMs();
-    grid = { at: now, units: gridPos(now), beat: entryBeatMs() };
+    grid = { ...grid, at: now, units: gridPos(now), beat: entryBeatMs() };
   }
   advanceHoldPromotions(dtMs);
   // Only MEASURED here, not written: a rest reaches the staff on a metronome
@@ -706,6 +741,7 @@ export function closeMetronomeSilence(pressedAt) {
   // With the metronome off there is no click, so the grid is an invisible one
   // started by the first key, at entryBeatMs() — the same one-beat-a-second
   // rule a held key is already valued by. With it on, metro fill decides.
+  pendingRaw = null;
   if (state.lesson || (state.metroOn && state.fill !== 'metro')) { grid = null; return; }
   const t = eventTime(pressedAt) ?? nowMs();
   const end = totalUnits();
@@ -721,17 +757,33 @@ export function closeMetronomeSilence(pressedAt) {
     // hair before the click is on it rather than a whole beat after the last.
     const beat = entryBeatMs();
     let origin = t;
+    // No click heard yet (the metronome has only just been switched on): the
+    // key is the best guess, and the first click to arrive corrects it — see
+    // onMetronomeTick(). Without that, a key played ahead of that first click
+    // timed the whole take from the key and not from the count.
+    let free = state.metroOn;
     if (lastClickAt != null && Math.abs(t - lastClickAt) < 2 * beat) {
       origin = lastClickAt + Math.round((t - lastClickAt) / beat) * beat;
+      free = false;
     }
-    grid = { at: origin, units: Math.ceil(end / TIME_UNITS_PER_BEAT) * TIME_UNITS_PER_BEAT, beat };
-    // Never behind the music already written: the take starts after it.
-    if (gridPos(t) < end) grid.units += end - gridPos(t);
+    grid = {
+      at: origin, units: Math.ceil(end / TIME_UNITS_PER_BEAT) * TIME_UNITS_PER_BEAT, beat, free,
+      id: `${Date.now().toString(36)}.${++takeSeq}`, from: end,
+    };
+    // Never behind the music already written: the take starts after it. By
+    // WHOLE dantas, and only when the ROUNDED onset is behind: a first key a
+    // hair before the downbeat rounds onto it, and shifting by the raw fraction
+    // moved the whole take that much late, so a later key played slightly late
+    // tipped into the next danta.
+    const lag = end - snap(gridPos(t));
+    if (lag > 0) grid.units += lag;
   }
-  const onset = Math.round(gridPos(t));
+  const onset = snap(gridPos(t));
+  pendingRaw = { id: grid.id, from: grid.from, on: gridPos(t) };
   // A key still down (legato) ends where this one starts.
   heldPromotions.forEach((p, i) => {
-    setHeldUnits(i, Math.max(MIN_HOLD_UNITS, onset - unitsBefore(i)));
+    if (state.notes[i]?.take) state.notes[i].take.off = pendingRaw.on;
+    setHeldUnits(i, Math.max(minRecorded(), onset - unitsBefore(i)));
     heldPromotions.delete(i);
   });
   metroEntry.idleUnits = 0;
@@ -744,7 +796,7 @@ export function closeMetronomeSilence(pressedAt) {
   } else if (onset < now && last?.type === 'note') {
     // The last note's release rounded past this onset: it ends here.
     setHeldUnits(state.notes.length - 1,
-      Math.max(MIN_HOLD_UNITS, onset - unitsBefore(state.notes.length - 1)));
+      Math.max(minRecorded(), onset - unitsBefore(state.notes.length - 1)));
   } else return;
   state.preset = null;
   render();
@@ -762,6 +814,25 @@ function usedInBeat() {
 // finish the beat the note stopped inside, then one bindu rest per beat.
 export function onMetronomeTick(heardAt) {
   lastClickAt = Number.isFinite(heardAt) ? heardAt : nowMs();
+  // The first click of a take that started before any click was heard: move
+  // the take's ruler (not the music already written) so this click is on a
+  // beat line — but only by under a quarter beat. That is a player coming in a
+  // little ahead of the count; a key and a click further apart than that are
+  // not one beat played early, and the key's own timing stands.
+  if (grid?.free) {
+    const p = gridPos(lastClickAt);
+    const shift = Math.round(p / TIME_UNITS_PER_BEAT) * TIME_UNITS_PER_BEAT - p;
+    if (Math.abs(shift) < TIME_UNITS_PER_BEAT / 4) {
+      grid.units += shift;
+      // Raw edges already taken on the old ruler move with it.
+      for (const n of state.notes) {
+        if (n.take?.id !== grid.id) continue;
+        n.take.on += shift;
+        if (n.take.off != null) n.take.off += shift;
+      }
+    }
+    grid.free = false;
+  }
   if (state.fill !== 'metro' || state.lesson) return;
   if (!state.metroOn || !metroEntry.armed || keyIsHeld()) return;
   // The tick no longer COUNTS the silence — it only asks the clock how much has
@@ -774,6 +845,66 @@ export function onMetronomeTick(heardAt) {
     state.preset = null;
     render();
   }
+}
+
+// REGION QUANTIZE, Logic's non-destructive kind: re-snap every recorded take
+// from the raw edges its notes kept, at the current state.quantize. Picking
+// "off" puts a take back at danta resolution, so nothing is ever lost to a
+// coarse grid. One undo for the lot; false when nothing moved.
+export function requantizeTakes() {
+  const before = JSON.stringify(state.notes);
+  const ids = new Set(state.notes.filter(n => n.take).map(n => n.take.id));
+  ids.forEach(requantizeTake);
+  const after = state.notes;
+  if (JSON.stringify(after) === before) return false;
+  state.notes = JSON.parse(before);
+  pushHist();
+  state.notes = after;
+  state.preset = null;
+  render();
+  return true;
+}
+
+function requantizeTake(id) {
+  const notes = state.notes;
+  const first = notes.findIndex(n => n.take?.id === id);
+  let last = notes.length - 1;
+  while (notes[last].take?.id !== id) last--;
+  // A note written some other way sits inside the take: the take is no longer
+  // the player's alone, so it is left as it stands.
+  for (let i = first; i <= last; i++) {
+    if (notes[i].type === 'note' && notes[i].take?.id !== id) return;
+  }
+  // An edit ahead of the take moved it; the raw edges move with it.
+  const shift = unitsBefore(first) - notes[first].take.at;
+  // The silence the take opened with is the take's too.
+  let start = first;
+  const from = notes[first].take.from + shift;
+  while (start > 0 && notes[start - 1].type === 'rest' && unitsBefore(start - 1) >= from) start--;
+
+  const played = notes.slice(first, last + 1).filter(n => n.type === 'note');
+  // Bake the shift into the raw edges, so the next requantize starts from here.
+  for (const n of played) {
+    n.take.on += shift;
+    n.take.from += shift;
+    if (n.take.off != null) n.take.off += shift;
+  }
+  const ons = played.map(n => snap(n.take.on));
+  let cursor = unitsBefore(start);
+  const out = [];
+  played.forEach((n, k) => {
+    const on = Math.max(cursor, ons[k]);
+    if (on > cursor) out.push(...padRests(on - cursor, cursor % TIME_UNITS_PER_BEAT));
+    let len = n.take.off != null ? snap(n.take.off) - on : unitsOfNote(n);
+    if (k + 1 < played.length) len = Math.min(len, ons[k + 1] - on);
+    len = Math.min(HOLD_CAP_BEATS * TIME_UNITS_PER_BEAT,
+      Math.max(n.take.min ?? 0, minRecorded(), len));
+    writeUnits(n, len);
+    n.take.at = on;
+    out.push(n);
+    cursor = on + len;
+  });
+  notes.splice(start, last - start + 1, ...out);
 }
 
 export function stopMetronomeEntry() {

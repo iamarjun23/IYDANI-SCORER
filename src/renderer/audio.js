@@ -15,7 +15,7 @@
 import { state } from './state.js';
 import {
   instrumentById, sampleUrl, SAMPLE_GAIN, RELEASE_SHARE, RELEASE_MAX_SECONDS, RING_MIN_SECONDS, AUDIO_LATENCY_HINT, semiOf,
-  SAMPLE_LOOP_AT, SAMPLE_LOOP_MIN, SAMPLE_SUSTAIN_MAX, SAMPLE_SUSTAIN_LOOP,
+  SAMPLE_LOOP_AT, SAMPLE_LOOP_MIN, SAMPLE_LOOP_SEARCH, SAMPLE_SUSTAIN_MAX, SAMPLE_SUSTAIN_LOOP,
   HELD_FADE_T,
   SUSTAIN_FLOOR, SUSTAIN_DECAY_T, SUSTAIN_DECAY_MIN_T, SUSTAIN_TONE_T,
   SUSTAIN_TONE_FROM_HZ, SUSTAIN_TONE_TO_HZ,
@@ -150,9 +150,9 @@ export function onsetOffset(data, sampleRate) {
 // `cents` in config.js), and 120 ms of the top octave is over a hundred periods,
 // so a few cents of error accumulates into most of a period of drift. Measured
 // that way the high notes wrapped ANTI-PHASE — correlation -0.11 to -0.71,
-// which is a click on every pass. So the length is chosen by searching a period
-// either side of the target for the offset whose material best matches the
-// start, which finds the recording's true period whatever it is tuned to.
+// which is a click on every pass. So the length is chosen by searching from
+// SAMPLE_LOOP_MIN up across SAMPLE_LOOP_SEARCH for the offset whose material
+// best matches the start, which finds the recording's true period whatever it is tuned to.
 //
 // AND THE REGION IS FLATTENED in place. The natural decay across a 120 ms
 // window at 0.4 s runs from 1.5 dB in the low octave to 9.4 dB in the high one,
@@ -191,7 +191,7 @@ export function buildSustainLoop(data, rate, freq) {
   const target = Math.max(p, Math.round(SAMPLE_LOOP_MIN * rate));
   const win = p * 3;
   const lo = Math.max(p, target - p);
-  const hi = target + p;
+  const hi = target + Math.max(p, Math.round(SAMPLE_LOOP_SEARCH * rate));
   if (start < 1 || start + hi + win >= data.length) return null;
 
   let len = target;
@@ -206,8 +206,10 @@ export function buildSustainLoop(data, rate, freq) {
   const a1 = windowRMS(data, end - p, p);
   // Clamped: a pathological ratio would amplify the tail's noise floor rather
   // than the note. 4x is 12 dB, well past the 9.4 dB worst case measured.
-  const ratio = a0 > 0 && a1 > 0 ? Math.min(4, Math.max(1, a0 / a1)) : 1;
-  if (ratio > 1) {
+  // BOTH ways: a piano's strings beat, so across some loop lengths the level
+  // RISES, and a ratio floored at 1 left that as a step down at every wrap.
+  const ratio = a0 > 0 && a1 > 0 ? Math.min(4, Math.max(0.25, a0 / a1)) : 1;
+  if (ratio !== 1) {
     for (let i = 0; i < len; i += 1) data[start + i] *= Math.pow(ratio, i / len);
   }
 

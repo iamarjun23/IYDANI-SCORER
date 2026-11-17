@@ -276,13 +276,27 @@ export const SAMPLE_LOOP_AT = 0.40;
 //
 // This is the knob if long notes are wanted held again — at the cost of the
 // ring, which is the same thing.
-export const SAMPLE_SUSTAIN_LOOP = false;
+//
+// Back ON (2026-11-18) at the user's word: a Maguru at 96 bpm sounded about
+// one beat and then four beats of silence, which they judged worse than the
+// ring. Held live keys stay unlooped either way (`startSustain()`).
+export const SAMPLE_SUSTAIN_LOOP = true;
 
 // The shortest loop that may be taken, in seconds, rounded UP to whole periods.
 // Much shorter and the repetition rate lands in the audible range and the note
 // takes on a metallic ring of its own; much longer and more of the natural
 // decay is inside the loop, which is what the flattening then has to undo.
-export const SAMPLE_LOOP_MIN = 0.12;
+export const SAMPLE_LOOP_MIN = 0.06;
+
+// How far PAST that minimum the loop length is searched for the best wrap, so
+// a loop is 60-180 ms. A period either side of a fixed 120 ms was enough for the
+// plucked set, whose partials are harmonic; a piano string's are stretched, so
+// the length that lines every partial up again is rarely within a period of any
+// one target. Searched that way the Yamaha A4 wrapped at 0.69, its D#5 at 0.54
+// and its C6 at 0.51; across 60-180 ms every shipped sample wraps at 0.73 or
+// better. 60 ms repeats at under 17 Hz, still below the ring the minimum guards
+// against. Costs decode time only.
+export const SAMPLE_LOOP_SEARCH = 0.12;
 
 // A live key that never gets its release — a missed MIDI note-off — used to go
 // quiet on its own because the recording ran out. A looped voice would drone
@@ -1335,6 +1349,13 @@ export const MENUS = {
     ['Value from how long you hold', 'holdTime', ''],
     ['Value from the selected symbol', 'holdFixed', ''],
     ['Selected symbol, or longer if held', 'holdPalette', ''],
+    ['—'],
+    // Record quantize, another radio group (menus.js ticks the current one).
+    // Named by the symbol the grid is, which is how a DNG player counts.
+    ['Quantize: off (danta)', 'q:1', ''],
+    ['Quantize: praya (¼ beat)', 'q:2', ''],
+    ['Quantize: vasu (½ beat)', 'q:4', ''],
+    ['Quantize: bindu (1 beat)', 'q:8', ''],
   ],
   View: [
     ['Zoom In', 'zin', '+'],

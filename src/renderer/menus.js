@@ -7,7 +7,7 @@ import { shortcutLabel } from './platform.js';
 import { show, hide, pop } from './popover.js';
 import { openAuth } from './auth-ui.js';
 import { undo, redo } from './history.js';
-import { clearAll, clearBars, loadPreset } from './score.js';
+import { clearAll, clearBars, loadPreset, requantizeTakes } from './score.js';
 import { downloadJSON, exportSVG } from './io.js';
 import { newDoc, saveDoc, buildTabs } from './tabs.js';
 import { toggleTheme } from './theme.js';
@@ -96,6 +96,7 @@ const CHECKED = {
   holdPalette: () => state.holdWrites === 'palette',
   // The Plugins menu's instruments, another radio group.
   ...Object.fromEntries(INSTRUMENTS.map(i => [`inst:${i.id}`, () => state.instrument === i.id])),
+  ...Object.fromEntries([1, 2, 4, 8].map(q => [`q:${q}`, () => state.quantize === q])),
 };
 
 function menuHtml(name) {
@@ -146,7 +147,10 @@ function doAct(a) {
     default:
       // An instrument goes through the toolbar dropdown, so the two never
       // disagree and the save / load / preview Sa live in one place (toolbar.js).
-      if (a.startsWith('inst:')) {
+      // The grid is both record quantize and, as Logic's region Quantize, a
+      // re-snap of every take already recorded (one undo; raw timing is kept).
+      if (a.startsWith('q:')) { setSetting('quantize', Number(a.slice(2))); requantizeTakes(); }
+      else if (a.startsWith('inst:')) {
         const sel = document.getElementById('instrument');
         sel.value = a.slice(5);
         sel.dispatchEvent(new Event('change'));

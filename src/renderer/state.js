@@ -97,6 +97,9 @@ export const state = {
   // was tapped. startHoldPromotion() in score.js is the one place all three
   // differ.
   holdWrites: 'time',   // 'time' | 'fixed' | 'palette'
+  // Record quantize, in timing units: 1 danta (off), 2 praya, 4 vasu, 8 bindu.
+  // What a played note's start and end are rounded to — see snap() in score.js.
+  quantize: 1,
 
   // the score itself
   notes: [],

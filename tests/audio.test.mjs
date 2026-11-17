@@ -208,15 +208,15 @@ const rmsOf = (x, from, len) => {
     const b = Math.round(loop.end * rate);
 
     assert.ok(loop.match > 0.7,
-      file + ' wraps onto matching material (' + loop.match.toFixed(3) + ', worst measured 0.761)');
+      file + ' wraps onto matching material (' + loop.match.toFixed(3) + ', worst measured 0.730)');
 
     const drift = 20 * Math.log10(rmsOf(x, b - p, p) / rmsOf(x, a, p));
     assert.ok(Math.abs(drift) < 1.5,
-      file + ' has no level step at the wrap (' + drift.toFixed(2) + ' dB, worst measured 0.75)');
+      file + ' has no level step at the wrap (' + drift.toFixed(2) + ' dB, worst measured 0.74)');
 
     const step = Math.abs(x[a] - x[b - 1]) / rmsOf(x, a, p);
     assert.ok(step < 0.5,
-      file + ' joins at the junction (' + step.toFixed(3) + ' x rms, worst measured 0.226)');
+      file + ' joins at the junction (' + step.toFixed(3) + ' x rms, worst measured 0.358)');
   }
 }
 

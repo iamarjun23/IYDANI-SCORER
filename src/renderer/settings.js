@@ -18,6 +18,10 @@ const DEFAULTS = {
   // See state.js. 'time' is the default because a played note should be worth
   // what it was actually held for.
   holdWrites: 'time',
+  // Record quantize — see state.js. Off (a danta) by default, as in Logic: a
+  // played note keeps the timing it was played with until a coarser grid is
+  // asked for.
+  quantize: 1,
   // Where playback sounds. 'internal' by default: the app must make a sound on
   // its own, with no instrument plugged in, and a saved 'device' would be
   // silent on a machine whose keyboard is not connected. deviceSink() falls
@@ -52,6 +56,7 @@ const DEFAULTS = {
 // hand and shared with whatever else the origin stores, so nothing is trusted.
 const ALLOWED = {
   holdWrites: ['time', 'fixed', 'palette'],
+  quantize: [1, 2, 4, 8],
   midiSink: ['internal', 'device'],
   // 'drive' was a previous third choice. Treat an old saved value as the
   // default so every installation now has the same two visible choices.
