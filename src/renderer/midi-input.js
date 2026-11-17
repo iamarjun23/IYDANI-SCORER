@@ -1077,7 +1077,7 @@ export function noteOn(midi, velocity = 64, at) {
   // pluck as well double-strikes every note.
   // Sound FIRST, before any score work, so the key is heard the instant it lands.
   const voice = keySoundsHere() ? startSustain(freqOf(w.semi, w.oct), gain) : null;
-  closeMetronomeSilence();
+  closeMetronomeSilence(at);
   // null until this device has proved it has a velocity sensor — addNote()
   // writes no `vel` at all for null, which is what a note with no dynamic to
   // record is supposed to look like.

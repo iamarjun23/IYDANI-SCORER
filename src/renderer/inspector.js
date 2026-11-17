@@ -164,13 +164,20 @@ export function installInspector() {
   // That span is state.playRange, which Play part (playback.js) plays.
   let selEnd = null;
   const syncRange = () => {
-    if (selAt == null) { selEnd = null; state.playRange = null; return; }
+    // TOGGLE, not add: render() keeps the rows it did not change, so a class
+    // left on one of them is no longer wiped by the next render.
+    if (selAt == null) {
+      selEnd = null; state.playRange = null;
+      document.querySelectorAll('#score .glyph.sel, #score .section-hit.sel')
+        .forEach(s => s.classList.remove('sel'));
+      return;
+    }
     if (selEnd == null) selEnd = selAt;
     const from = Math.min(selAt, selEnd), to = Math.max(selAt, selEnd) + boxUnits();
     state.playRange = { from, to };
     document.querySelectorAll('#score .section-hit').forEach(s => {
       const at = Number(s.dataset.boxAt);
-      if (at >= from && at < to) s.classList.add('sel');
+      s.classList.toggle('sel', at >= from && at < to);
     });
   };
 

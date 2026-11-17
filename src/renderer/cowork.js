@@ -1,10 +1,12 @@
 // Cowork: a teacher writes a song and makes a lesson of it, a student opens the
 // lesson and plays it. The play-along judging is lesson.js; this is the bar.
 //
-// IT IS A BAR ON THE EDITOR, NOT A PAGE. A page of its own was built first and
-// refused: it gave the teacher somewhere to upload a song and nowhere to write
-// one, when the whole editor for writing it was already on screen behind it.
-// So the teacher's view IS the default screen, with one bar added to it.
+// IT IS A SCREEN OVER THE EDITOR, NOT A PAGE. A page of its own was built first
+// and refused: it gave the teacher somewhere to upload a song and nowhere to
+// write one, when the whole editor for writing it was already on screen behind
+// it. So the teacher writes in the editor, the Cowork button opens this screen
+// to save or open lessons, and while a lesson is PLAYED a slim bar above the
+// sheet carries its controls (Exit, Listen / Play along) with the editor live.
 //
 // A LESSON FILE IS A SCORE FILE — the same .dng.json File ▸ Save writes — so
 // there is no second format, and anything the editor can open (a MIDI or
@@ -134,8 +136,9 @@ function lightNext(n) {
 
 function onLesson() {
   const L = state.lesson;
-  // A lesson is always played with its bar showing.
-  if (L) $('coworkBar').hidden = false;
+  // The lesson's own bar shows only while one is open; its screen gets out of the way.
+  $('coworkBar').hidden = !L;
+  if (L) closeCowork();
   document.body.classList.toggle('lesson', !!L);
   const play = !!L && L.mode === 'play';
   // The note being waited for is drawn in the playback ink, like one sounding.
@@ -160,11 +163,31 @@ function onLesson() {
     ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
+// The Cowork screen. Modal, so keys are swallowed: typing over it must not
+// write notes on the staff behind it (same as the update and About screens).
+const swallow = e => {
+  if (e.key === 'Escape') closeCowork();
+  e.stopPropagation();
+};
+
+function closeCowork() {
+  $('coworkOverlay').hidden = true;
+  document.removeEventListener('keydown', swallow, true);
+}
+
+function openCowork() {
+  if (!$('coworkOverlay').hidden) return;
+  paint();
+  $('coworkOverlay').hidden = false;
+  document.addEventListener('keydown', swallow, true);
+}
+
 export function wireCowork() {
-  // The header button puts the bar away and brings it back. Not while a lesson
-  // is open: its controls are the only way out of one.
-  $('coworkBtn').addEventListener('click', () => {
-    if (!state.lesson) $('coworkBar').hidden = !$('coworkBar').hidden;
+  // Not while a lesson is open: its bar's controls are the only way out of one.
+  $('coworkBtn').addEventListener('click', () => { if (!state.lesson) openCowork(); });
+  $('cwClose').addEventListener('click', closeCowork);
+  $('coworkOverlay').addEventListener('mousedown', e => {
+    if (e.target === $('coworkOverlay')) closeCowork();
   });
   $('cwRole').addEventListener('click', e => {
     const b = e.target.closest('button');

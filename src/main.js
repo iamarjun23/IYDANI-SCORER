@@ -52,6 +52,20 @@ if (isDev) {
 }
 
 
+// The whole app is laid out for a 1600x1000 window; a smaller window shows that
+// same layout scaled down, rather than a re-flowed one, so nothing moves, wraps
+// or drops out in a mini window. Never scaled UP: a bigger window just has more
+// room. Chromium zoom, so text, controls, the sheet and the piano all scale
+// together (the sheet's true-size measure shrinks with it, by design).
+const DESIGN_W = 1600;
+const DESIGN_H = 1000;
+const MIN_SCALE = 0.4; // ponytail: below this the text is unreadable; raise minWidth/minHeight if it matters
+function scaleToWindow(win) {
+  if (win.isDestroyed()) return;
+  const [w, h] = win.getContentSize();
+  win.webContents.setZoomFactor(Math.max(MIN_SCALE, Math.min(1, w / DESIGN_W, h / DESIGN_H)));
+}
+
 function createWindow() {
   // What the screen can actually show. 1600x1000 is larger than the whole
   // desktop on most laptops — a 1920x1080 panel at the 125% or 150% scaling
@@ -66,10 +80,10 @@ function createWindow() {
     // zoom with both rails open rather than to a round number.
     width: Math.min(1600, area.width),
     height: Math.min(1000, area.height),
-    // Small enough to fit a 1280x720 desktop with room to move. The layout
-    // gives way in steps under 1720px — see "smaller windows" in index.html.
-    minWidth: 1024,
-    minHeight: 640,
+    // A mini window is allowed: the app scales to it (scaleToWindow), 0.4 at
+    // this size.
+    minWidth: 640,
+    minHeight: 400,
     backgroundColor: '#191919',
     title: 'IYDANI SCORER',
     // build/icon.png is what electron-builder stamps onto the EXE, but it is
@@ -91,6 +105,8 @@ function createWindow() {
   if (area.width < 1600 || area.height < 1000) win.maximize();
 
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  win.on('resize', () => scaleToWindow(win));
+  win.webContents.on('did-finish-load', () => scaleToWindow(win));
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http://') || url.startsWith('https://')) {

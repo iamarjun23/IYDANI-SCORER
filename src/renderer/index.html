@@ -296,6 +296,14 @@
     .upd-chip:not([data-state="downloading"]) .upd-bar { display: none }
     .upd-chip[data-state="ready"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent) }
     .upd-chip[data-state="ready"]:hover { background: var(--hover) }
+    .upd-dlg { width: min(460px, 100%) }
+    .upd-body { padding: 14px 18px; overflow: auto }
+    .upd-body small { color: var(--ink-3); font-size: 11px }
+    .upd-body h3 { margin: 10px 0 6px; font-size: 13px }
+    .upd-notes { margin: 0; font: inherit; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); white-space: pre-wrap; max-height: 260px; overflow: auto }
+    .upd-status { margin: 12px 0 0; font-size: 12px; color: var(--ink-3) }
+    .upd-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border) }
+    .upd-foot button:disabled { opacity: .5; cursor: default }
     #pop .upd-pop { padding: 8px 10px; width: 250px }
     #pop .upd-pop b { display: block; font-size: 13px; color: var(--ink) }
     #pop .upd-pop p { margin: 4px 0 10px; font-size: 12px; color: var(--ink-2); line-height: 1.45 }
@@ -1582,6 +1590,38 @@
 
     .rep-ghost.bad {
       opacity: .4
+    }
+
+    /* note-drag.js: the notehead following the pointer, snapped to its rung */
+    .note-ghost {
+      position: fixed;
+      z-index: 90;
+      pointer-events: none
+    }
+
+    .note-ghost .art svg {
+      display: block;
+      opacity: .75
+    }
+
+    .note-ghost .nm {
+      position: absolute;
+      white-space: nowrap;
+      font: 600 11px/1.4 system-ui, sans-serif;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: var(--accent, #1f6feb);
+      color: #fff
+    }
+
+    .note-ghost .nm:empty {
+      display: none
+    }
+
+    body.note-dragging,
+    body.note-dragging * {
+      cursor: grabbing !important;
+      user-select: none
     }
 
     .rep-drop {
@@ -3039,6 +3079,10 @@
 
     .cw-bar select option { background: var(--pop); color: var(--ink) }
 
+    .cw-dlg { width: min(560px, 100%) }
+    .cw-body { flex-direction: column; align-items: stretch; gap: 12px; padding: 16px 18px; background: none; border: 0 }
+    .cw-body .seg { align-self: flex-start }
+
     /* Last, so it beats the display .grp and .mbtn set for themselves. */
     .cw-bar[hidden], .cw-bar [hidden] { display: none }
 
@@ -4162,22 +4206,35 @@
          the song with the tools already here and this bar turns it into a
          lesson. cowork.js shows the half that fits the role, and swaps the
          first group for the second while a lesson is being played. -->
-    <div class="cw-bar" id="coworkBar">
-      <div class="seg" id="cwRole">
-        <button data-r="teacher" type="button">Teacher</button>
-        <button data-r="student" type="button">Student</button>
+    <!-- The Cowork button opens this screen over the editor (like the update
+         screen). Playing a lesson closes it and the bar below takes over. -->
+    <div class="lgd-scrim" id="coworkOverlay" hidden>
+      <div class="lgd cw-dlg" role="dialog" aria-modal="true" aria-label="Cowork">
+        <div class="lgd-head"><b data-i18n="Cowork">Cowork</b>
+          <button class="lgd-x" id="cwClose" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
+        </div>
+        <div class="cw-bar cw-body">
+          <div class="seg" id="cwRole">
+            <button data-r="teacher" type="button">Teacher</button>
+            <button data-r="student" type="button">Student</button>
+          </div>
+          <span class="grp" id="cwHome">
+            <button class="mbtn accent" id="cwAdd" data-for="teacher" type="button"
+              title="Make a lesson of the score you are writing">Save as lesson</button>
+            <button class="mbtn" id="cwOpen" data-for="student" type="button">Open lesson file</button>
+            <select id="cwPick" aria-label="Lessons"></select>
+            <button class="mbtn" id="cwSave" data-for="teacher" type="button"
+              title="The file you send to a student">Save lesson file</button>
+            <button class="mbtn" id="cwDel" data-for="teacher" type="button">Delete</button>
+            <button class="mbtn accent" id="cwPlay" data-for="student" type="button">Play</button>
+            <span class="msg" id="cwMsg"></span>
+          </span>
+          <input type="file" id="cwFile" accept=".json,.dng.json" hidden>
+        </div>
       </div>
-      <span class="grp" id="cwHome">
-        <button class="mbtn accent" id="cwAdd" data-for="teacher" type="button"
-          title="Make a lesson of the score you are writing">Save as lesson</button>
-        <button class="mbtn" id="cwOpen" data-for="student" type="button">Open lesson file</button>
-        <select id="cwPick" aria-label="Lessons"></select>
-        <button class="mbtn" id="cwSave" data-for="teacher" type="button"
-          title="The file you send to a student">Save lesson file</button>
-        <button class="mbtn" id="cwDel" data-for="teacher" type="button">Delete</button>
-        <button class="mbtn accent" id="cwPlay" data-for="student" type="button">Play</button>
-        <span class="msg" id="cwMsg"></span>
-      </span>
+    </div>
+
+    <div class="cw-bar" id="coworkBar" hidden>
       <span class="grp" id="cwLesson" hidden>
         <button class="mbtn" id="lsnExit" type="button">Exit lesson</button>
         <b id="lsnTitle"></b>
@@ -4189,7 +4246,6 @@
       </span>
       <span class="sp"></span>
       <b id="lsnScore"></b>
-      <input type="file" id="cwFile" accept=".json,.dng.json" hidden>
     </div>
 
     <div class="work">

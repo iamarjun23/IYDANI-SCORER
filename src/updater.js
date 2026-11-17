@@ -23,6 +23,22 @@ const isCriticalUpdate = (info) => {
   return notes.includes('[security]') || notes.includes('[critical]');
 };
 
+// The release body as plain text for the "What's new" screen. GitHub's feed
+// hands it over as HTML (or, for a multi-version gap, an array of {note}).
+// The renderer shows it with textContent, so tags are stripped here, not trusted.
+const notesOf = (info) => {
+  let n = info?.releaseNotes;
+  if (Array.isArray(n)) n = n.map((x) => x.note).join('\n');
+  return String(n || '')
+    .replace(/<li[^>]*>/gi, '\n• ')
+    .replace(/<\/(p|h\d|ul|ol)>|<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 // ---- macOS ----------------------------------------------------------------
 // Squirrel.Mac, which electron-updater drives on a Mac, installs only an
 // update signed by the same Developer ID as the running app, and this build
@@ -94,7 +110,7 @@ async function macDownload(info) {
     if (!name) throw new Error('The downloaded update has no app in it');
 
     macReady = { next: path.join(dir, name), version: info.version };
-    send('updater:ready', { version: info.version, critical: isCriticalUpdate(info) });
+    send('updater:ready', { version: info.version, notes: notesOf(info), critical: isCriticalUpdate(info) });
   } catch (err) {
     console.error('Updater error:', err);
     send('updater:error', err.message);
@@ -142,7 +158,9 @@ function setupAutoUpdater(mainWindow) {
   ipcMain.handle('updater:check', async () => {
     if (!app.isPackaged) throw new Error('Updates only work in the installed app');
     const r = await autoUpdater.checkForUpdates();
-    return r?.isUpdateAvailable ? r.updateInfo.version : null;
+    return r?.isUpdateAvailable
+      ? { version: r.updateInfo.version, notes: notesOf(r.updateInfo) }
+      : null;
   });
 
   // Don't run updates in development mode
@@ -162,6 +180,7 @@ function setupAutoUpdater(mainWindow) {
     console.log('Update available:', info.version);
     send('updater:available', {
       version: info.version,
+      notes: notesOf(info),
       critical: isCriticalUpdate(info),
     });
     if (MAC) macDownload(info);
@@ -179,6 +198,7 @@ function setupAutoUpdater(mainWindow) {
     console.log('Update downloaded:', info.version);
     send('updater:ready', {
       version: info.version,
+      notes: notesOf(info),
       critical: isCriticalUpdate(info),
     });
   });

@@ -27,6 +27,7 @@ import { wireMonitor } from './midi-monitor.js';
 import { wireAbout } from './about.js';
 import { installBreakTool } from './breaks.js';
 import { installRepeatTool } from './repeats.js';
+import { installNoteDrag } from './note-drag.js';
 import { loadTalas, registerTala, allTalas } from './timesig.js';
 import { loadSettings } from './settings.js';
 import { setInstrument } from './audio.js';
@@ -247,6 +248,7 @@ function init() {
   installInspector();
   installBreakTool();
   installRepeatTool();
+  installNoteDrag();
   wireTimeSigDialog();
   installKeymapUI();
   installMidiUI();

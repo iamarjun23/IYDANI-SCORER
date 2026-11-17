@@ -58,10 +58,19 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Full history: the notes the app's "What's new" screen shows are the
+      # commit subjects since the previous release (--generate-notes lists only
+      # merged PRs, and these are direct commits, so it came out empty).
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "${GITHUB_REF_NAME#v}" --generate-notes
+        run: |
+          prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          git log ${prev:+$prev..}"$GITHUB_REF_NAME" --no-merges -n 30 --pretty='- %s' > notes.md
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "${GITHUB_REF_NAME#v}" --notes-file notes.md

@@ -9,10 +9,11 @@
 // A release whose notes carry [critical] or [security] still gets the
 // blocking card instead: that is the one case where "later" is not allowed.
 
-import { show, hide, pop } from './popover.js';
-
 let updater, chip, text, bar;
 let version = '';
+let notes = '';
+let percent = 0;
+let dlg = null; // the open "What's new" screen, if any
 let settle;
 
 // A passing message ("Up to date") that falls back to idle on its own.
@@ -36,18 +37,22 @@ export function initUpdater() {
   idle();
 
   const downloading = (pct) => {
+    percent = Math.round(pct);
+    paint();
     if (chip.dataset.state === 'ready') return;
     say('downloading', `Update ${Math.round(pct)}%`, `Downloading version ${version}`);
     bar.style.width = `${pct}%`;
   };
 
-  updater.onAvailable((info) => { version = info.version; downloading(0); });
+  updater.onAvailable((info) => { version = info.version; notes = info.notes || ''; downloading(0); });
   updater.onProgress((pct) => downloading(pct));
 
   updater.onReady((info) => {
     version = info.version;
+    notes = info.notes || notes;
     if (info.critical) { showCritical(info.version); return; }
     say('ready', 'Update ready', `Version ${version} is ready to install`);
+    paint();
   });
 
   // A failed download is retried on the next check; a pill stuck at 37% would
@@ -58,7 +63,7 @@ export function initUpdater() {
   });
 
   chip.addEventListener('click', () => {
-    if (chip.dataset.state === 'ready') return offerInstall();
+    if (chip.dataset.state === 'ready') return showUpdate();
     checkForUpdates();
   });
 }
@@ -68,12 +73,14 @@ export function initUpdater() {
 export async function checkForUpdates() {
   if (!updater || !chip) return;
   const s = chip.dataset.state;
-  if (s === 'ready') return offerInstall();
+  if (s === 'ready') return showUpdate();
   if (s === 'downloading' || s === 'checking') return;
   say('checking', 'Checking…');
   try {
     const found = await updater.check();
-    // Found: onAvailable has already taken the button over for the download.
+    // Found: onAvailable has already taken the button over for the download;
+    // the screen says what it is.
+    if (found) { version = found.version; notes = found.notes || notes; showUpdate(); }
     if (!found && chip.dataset.state === 'checking') brief('latest', 'Up to date', 'You have the newest version');
   } catch (err) {
     // IPC wraps the main process's message as "Error invoking remote method
@@ -83,15 +90,57 @@ export async function checkForUpdates() {
   }
 }
 
-function offerInstall() {
-  show(`<div class="upd-pop">
-    <b>Version ${version} is ready</b>
-    <p>Your scores are autosaved. The app restarts in a few seconds.</p>
-    <div class="row"><button class="mbtn" data-upd="later">Later</button><button class="mbtn accent" data-upd="now">Restart now</button></div>
-    <small>Later: installs next time you close the app</small>
-  </div>`, chip, 'right');
-  pop().querySelector('[data-upd="later"]').onclick = hide;
-  pop().querySelector('[data-upd="now"]').onclick = () => updater.install();
+// The "What's new" screen: which version, what changed, where the download is.
+// Opened by a manual check that finds one, or by the Update ready button.
+// Restart waits for the file; Later costs nothing (installs on next quit).
+function paint() {
+  if (!dlg) return;
+  const ready = chip.dataset.state === 'ready';
+  dlg.querySelector('.upd-status').textContent = ready
+    ? 'Downloaded. Your scores are autosaved; the app restarts in a few seconds.'
+    : `Downloading… ${percent}%`;
+  dlg.querySelector('[data-upd="now"]').disabled = !ready;
+}
+
+const swallow = (e) => {
+  if (e.key === 'Escape') closeUpdate();
+  e.stopPropagation();
+};
+
+function closeUpdate() {
+  document.removeEventListener('keydown', swallow, true);
+  dlg?.remove();
+  dlg = null;
+}
+
+function showUpdate() {
+  if (dlg) return paint();
+  dlg = document.createElement('div');
+  dlg.className = 'lgd-scrim';
+  dlg.innerHTML = `<div class="lgd upd-dlg" role="dialog" aria-modal="true">
+    <div class="lgd-head"><b class="upd-title"></b></div>
+    <div class="upd-body">
+      <small class="upd-cur"></small>
+      <h3>What's new</h3>
+      <pre class="upd-notes"></pre>
+      <p class="upd-status"></p>
+    </div>
+    <div class="upd-foot">
+      <button class="mbtn" data-upd="later">Later</button>
+      <button class="mbtn accent" data-upd="now">Restart now</button>
+    </div>
+  </div>`;
+  const q = (s) => dlg.querySelector(s);
+  q('.upd-title').textContent = `Version ${version} is available`;
+  q('.upd-cur').textContent = `You have ${window.hamsleka?.versions?.app ?? 'an older version'}`;
+  q('.upd-notes').textContent = notes || 'No release notes were published for this version.';
+  q('[data-upd="later"]').onclick = closeUpdate;
+  q('[data-upd="now"]').onclick = () => updater.install();
+  dlg.addEventListener('mousedown', (e) => { if (e.target === dlg) closeUpdate(); });
+  // Modal: typing over it must not write notes on the staff behind it.
+  document.addEventListener('keydown', swallow, true);
+  document.body.appendChild(dlg);
+  paint();
 }
 
 function showCritical(version) {

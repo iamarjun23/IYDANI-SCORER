@@ -31,7 +31,7 @@ import { state } from './state.js';
 import { beatSeconds as tempoBeat } from './config.js';
 import { beatsPerBox, isGroupStart } from './timesig.js';
 import { onMetronomeTick, stopMetronomeEntry } from './score.js';
-import { audioCtx, audioNow } from './audio.js';
+import { audioCtx, audioNow, perfTimeForAudio } from './audio.js';
 import { clockSink, sendClockAt, sendClockStart, sendClockStop } from './midi-out.js';
 import {
   newClockSender, anchorClockSender, clockSenderRunning, stopClockSender, pumpClockOut,
@@ -359,7 +359,9 @@ export function renderClicks(ctx, beat, seconds) {
 // scheduled — everything here is laid down a window in advance.
 export function emitBeat(beat, at) {
   clickForBeat(beat, at);
-  setTimeout(onMetronomeTick, Math.max(0, (at - audioNow()) * 1000));
+  // The heard moment on the performance clock, so a key can be placed against it.
+  const heard = perfTimeForAudio(at);
+  setTimeout(() => onMetronomeTick(heard), Math.max(0, (at - audioNow()) * 1000));
 }
 
 // Is an external master counting for us? Both halves matter: the player has to

@@ -45,6 +45,21 @@ const heldPromotions = new Map();
 let holdTimer = null;
 let holdLast = 0;
 
+// THE TAKE'S GRID — where a key lands is decided by WHEN it was pressed against
+// the metronome, the way a DAW records against its bar, not by adding up the
+// lengths of everything played before it. `units` is the written position at
+// wall time `at`, counted at `beat` ms a beat. Chaining durations let every
+// note's rounding carry into the next (hold 4.6 dantas, rest 3.4, and the
+// staff ran 0.4 of a danta ahead of the clicks per note); measuring each onset
+// from one origin cannot drift. Only under metro fill, the one mode that
+// writes the silence a placed onset needs. Rebased on every clock tick so a
+// tempo change applies from where it happened.
+let grid = null;
+let lastClickAt = null;
+const TAKE_IDLE_BEATS = 8;
+const gridPos = t => grid.units + ((t - grid.at) / grid.beat) * TIME_UNITS_PER_BEAT;
+const totalUnits = () => state.notes.reduce((u, n) => u + unitsOfNote(n), 0);
+
 // The shortest single glyph the notation has — a danta, one unit. Derived
 // rather than written as 1 so that adding a shorter SOUND lowers the floor with
 // it instead of leaving a value nothing can play.
@@ -319,6 +334,56 @@ export function moveNote(index, { svaraIndex = null, oct = null, delta = 0 } = {
   return true;
 }
 
+// Index a note would be inserted at to start at `unit` on the clock. A point
+// inside a note goes to whichever of its edges is nearer.
+export function insertIndexAt(notes, unit) {
+  let at = 0;
+  for (let i = 0; i < notes.length; i++) {
+    const len = unitsOfNote(notes[i]);
+    if (unit <= at) return i;
+    if (unit < at + len) return unit - at < len / 2 ? i : i + 1;
+    at += len;
+  }
+  return notes.length;
+}
+
+// Drag-and-drop on the sheet: put `item` at `unit`, pushing everything after
+// it along. With `from`, the note at that index is MOVED (taken out first, so
+// the music closes over where it was) — and given the pitch `item` carries.
+// A drop past the written music pads the gap with rests, so the note lands
+// where it was dropped. One gesture, one undo.
+export function placeAt(item, unit, from = null) {
+  const notes = state.notes.slice();
+  let u = Math.max(0, Math.round(Number(unit) || 0));
+  let moving = null;
+  if (from != null) {
+    moving = notes[from];
+    if (!moving || moving.type !== 'note') return false;
+    const start = unitsBefore(from);
+    if (u > start) u = Math.max(start, u - unitsOfNote(moving));
+    notes.splice(from, 1);
+  }
+  let idx = insertIndexAt(notes, u);
+  if (idx === notes.length) {
+    const total = notes.reduce((s, n) => s + unitsOfNote(n), 0);
+    if (u > total) notes.push(...padRests(u - total, total % TIME_UNITS_PER_BEAT));
+    idx = notes.length;
+  }
+  let put = item;
+  if (moving) {
+    const same = idx === from && moving.svaraIndex === item.svaraIndex
+      && moving.oct === item.oct && moving.head === item.head;
+    if (same) return false;
+    put = { ...moving, svaraIndex: item.svaraIndex, oct: item.oct, head: item.head };
+  }
+  notes.splice(idx, 0, put);
+  pushHist();
+  state.notes.splice(0, state.notes.length, ...notes);
+  state.preset = null;
+  render();
+  return true;
+}
+
 // Delete from the roll. A NOTE becomes the silence it was taking up, so nothing
 // after it moves; a REST is taken out and the music closes over it — which is
 // the only thing deleting silence can mean in a sequence.
@@ -428,7 +493,11 @@ export function startHoldPromotion(index, initialSym = state.sym, pressedAt) {
       // That is taken back; the floor below still bounds the result.
       const end = eventTime(releasedAt);
       const since = end != null ? end - promotion.at : Math.max(0, nowMs() - promotion.at);
-      const elapsed = heldUnits(promotion, since);
+      // On the grid the RELEASE is placed too, so the length is where the key
+      // came up minus where the note starts — both edges on the clock.
+      const elapsed = grid
+        ? gridPos(end ?? nowMs()) - unitsBefore(index)
+        : heldUnits(promotion, since);
       const held = Math.min(
         HOLD_CAP_BEATS * TIME_UNITS_PER_BEAT,
         Math.max(promotion.floorUnits, Math.round(elapsed)),
@@ -517,6 +586,10 @@ export function ensureHoldPromotionClock() {
 //
 // Exported so the tests can pump the clock without waiting on a real timer.
 export function tickScoreClock(dtMs) {
+  if (grid) {
+    const now = nowMs();
+    grid = { at: now, units: gridPos(now), beat: entryBeatMs() };
+  }
   advanceHoldPromotions(dtMs);
   // Only MEASURED here, not written: a rest reaches the staff on a metronome
   // beat or in front of the next note, which is where a reader expects to see
@@ -566,6 +639,12 @@ export function endMetronomeEntry() {
 function accrueIdle(dtMs = null) {
   if (!idleAccruing()) return;
   const now = nowMs();
+  if (grid) {
+    // The silence is simply how far the clock is past the written music.
+    metroEntry.idleUnits = Math.max(0, gridPos(now) - totalUnits());
+    metroEntry.idleAt = now;
+    return;
+  }
   // The clock passes the interval it just waited; a flush passes nothing and
   // means "bring this up to now". beatMs() is read HERE either way, so each
   // slice of silence is valued at the tempo that was in force across it.
@@ -623,14 +702,52 @@ function flushIdle(all = false) {
 // danta-rest apart and the score read as two dantas in a row: the notes were
 // measured to an eighth of a beat while the space between them was measured to
 // a whole one.
-export function closeMetronomeSilence() {
-  if (state.fill !== 'metro' || state.lesson) return;
-  if (!state.metroOn || !metroEntry.armed || keyIsHeld()) return;
-  accrueIdle();
-  if (flushIdle(true)) {
-    state.preset = null;
-    render();
+export function closeMetronomeSilence(pressedAt) {
+  // With the metronome off there is no click, so the grid is an invisible one
+  // started by the first key, at entryBeatMs() — the same one-beat-a-second
+  // rule a held key is already valued by. With it on, metro fill decides.
+  if (state.lesson || (state.metroOn && state.fill !== 'metro')) { grid = null; return; }
+  const t = eventTime(pressedAt) ?? nowMs();
+  const end = totalUnits();
+  // A pause this long is the player stopping, not a rest: start a new take
+  // rather than writing a page of silence.
+  // ponytail: fixed 8 beats, make it a setting if someone records long rests by hand.
+  if (grid && gridPos(t) - end > TAKE_IDLE_BEATS * TIME_UNITS_PER_BEAT) grid = null;
+  // The beat changed with no tick to rebase it: the metronome was switched on
+  // or off between keys. That is a new take, on the new ruler.
+  if (grid && grid.beat !== entryBeatMs()) grid = null;
+  if (!grid) {
+    // A take starts on the click NEAREST the first key, so a key played a
+    // hair before the click is on it rather than a whole beat after the last.
+    const beat = entryBeatMs();
+    let origin = t;
+    if (lastClickAt != null && Math.abs(t - lastClickAt) < 2 * beat) {
+      origin = lastClickAt + Math.round((t - lastClickAt) / beat) * beat;
+    }
+    grid = { at: origin, units: Math.ceil(end / TIME_UNITS_PER_BEAT) * TIME_UNITS_PER_BEAT, beat };
+    // Never behind the music already written: the take starts after it.
+    if (gridPos(t) < end) grid.units += end - gridPos(t);
   }
+  const onset = Math.round(gridPos(t));
+  // A key still down (legato) ends where this one starts.
+  heldPromotions.forEach((p, i) => {
+    setHeldUnits(i, Math.max(MIN_HOLD_UNITS, onset - unitsBefore(i)));
+    heldPromotions.delete(i);
+  });
+  metroEntry.idleUnits = 0;
+  metroEntry.idleAt = null;
+  const now = totalUnits();
+  const last = state.notes[state.notes.length - 1];
+  if (onset > now) {
+    pushHist();
+    for (const rest of padRests(onset - now, now % TIME_UNITS_PER_BEAT)) state.notes.push(rest);
+  } else if (onset < now && last?.type === 'note') {
+    // The last note's release rounded past this onset: it ends here.
+    setHeldUnits(state.notes.length - 1,
+      Math.max(MIN_HOLD_UNITS, onset - unitsBefore(state.notes.length - 1)));
+  } else return;
+  state.preset = null;
+  render();
 }
 
 // How far into the current beat the written music ends, in timing units.
@@ -643,7 +760,8 @@ function usedInBeat() {
 // Called once per metronome beat. It fills only the time after a released
 // note, writing the same beat-aligned silence padRests() derives in 'auto':
 // finish the beat the note stopped inside, then one bindu rest per beat.
-export function onMetronomeTick() {
+export function onMetronomeTick(heardAt) {
+  lastClickAt = Number.isFinite(heardAt) ? heardAt : nowMs();
   if (state.fill !== 'metro' || state.lesson) return;
   if (!state.metroOn || !metroEntry.armed || keyIsHeld()) return;
   // The tick no longer COUNTS the silence — it only asks the clock how much has
@@ -663,6 +781,8 @@ export function stopMetronomeEntry() {
   metroEntry.held = 0;
   metroEntry.idleUnits = 0;
   metroEntry.idleAt = null;
+  grid = null;
+  lastClickAt = null;
   ensureHoldPromotionClock();
 }
 

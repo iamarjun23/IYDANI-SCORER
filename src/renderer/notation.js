@@ -1536,6 +1536,10 @@ function pageEnd(last) {
 // the keys lagged. One frame is the most any of them can be late. Under plain
 // Node (the tests) there is no frame to wait for, so it renders now.
 let pendingFrame = 0;
+// What render() last put in #score, so the next one can replace only the rows
+// that differ. `frame` is everything that is not a row (page seams, the
+// out-of-range break chip); when it changes the sheet is rebuilt whole.
+const shown = { score: null, frame: '', rows: [] };
 export function renderSoon() {
   if (typeof requestAnimationFrame !== 'function') return render();
   if (!pendingFrame) pendingFrame = requestAnimationFrame(() => { pendingFrame = 0; render(); });
@@ -1565,7 +1569,8 @@ export function render() {
     const pill = sheet.querySelector(':scope > .pagenum span');
     if (pill) pill.textContent = pages;
   }
-  score.innerHTML = rows.map((row, i) => {
+  const seams = [];
+  const html = rows.map((row, i) => {
     const yMin = rowExtent(row).yMin;
     // The badge belongs to the row the break falls AFTER, so it reads as the
     // end of a line rather than the start of one.
@@ -1573,14 +1578,29 @@ export function render() {
     if (next && next.brk && next.brkOrd === state.lastBreak) ghosted = true;
     const mark = next && next.brk
       ? breakMark(next.brkOrd, yMin, next.brkOrd === state.lastBreak) : '';
-    const seam = at && i && at[i].page !== at[i - 1].page ? pageEnd(at[i - 1]) : '';
-    return `${seam}<div class="srow" data-row="${i}">${rowGutter(i + 1, yMin)}${mark}`
+    seams.push(at && i && at[i].page !== at[i - 1].page ? pageEnd(at[i - 1]) : '');
+    return `<div class="srow" data-row="${i}">${rowGutter(i + 1, yMin)}${mark}`
       + `${repeatBadges(row, yMin)}`
       + `${rowSVG(row, state.hlIndex, state.hlAt)}</div>`;
-  }).join('');
+  });
   // No row claimed it: the break is out past the last division, so say so
   // under the staff rather than leaving the user with a break they cannot see.
-  if (!ghosted) score.insertAdjacentHTML('beforeend', ghostBreak(state.lastBreak));
+  const tail = ghosted ? '' : ghostBreak(state.lastBreak);
+  const frame = seams.join('\u0000') + '\u0001' + tail;
+  // Only the rows whose markup changed are replaced. Building the strings is
+  // ~1 ms at 400 notes; handing the whole sheet to the DOM was 26 ms on a fast
+  // machine and 100 ms at 4x CPU throttle — and this runs on every keystroke,
+  // every beat of playback and every tick of a held note, which is what made
+  // the editor lag on slower machines. A note typed at the end touches one row.
+  const old = shown.score === score && shown.frame === frame
+    && shown.rows.length === html.length && score.querySelectorAll
+    && score.querySelectorAll(':scope > .srow');
+  if (old && old.length === html.length) {
+    html.forEach((h, i) => { if (h !== shown.rows[i]) old[i].outerHTML = h; });
+  } else {
+    score.innerHTML = html.map((h, i) => seams[i] + h).join('') + tail;
+  }
+  Object.assign(shown, { score, frame, rows: html });
   updateSheetMeta();
   document.dispatchEvent(new CustomEvent('score:rendered'));
 }
