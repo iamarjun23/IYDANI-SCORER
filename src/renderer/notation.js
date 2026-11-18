@@ -355,6 +355,66 @@ export function entryCells(rows) {
   return cells.sort((a, b) => a.at - b.at);
 }
 
+// Thickness of a held note's length bar, staff units — a goli's radius, so it
+// reads as the note's own extent rather than as a staff line.
+const HOLD_BAR_H = 5;
+
+// A held key — drawn as a head and a growing length bar until it comes up.
+const isHeld = e => e.index != null && !!state.holding?.has(e.index);
+
+// Whether this division is being played into right now (see state.entering).
+// Divisions wholly before the take keep their normal layout, so starting to
+// play does not reshuffle the page above.
+const entryBox = (b, cap) => state.entering && b.at != null
+  && b.entries.length > 0 && b.at + cap > (state.entryFrom || 0);
+
+// LIVE-ENTRY LAYOUT, the way a DAW lays a bar out while recording: each symbol
+// sits where its TIME is in the division, so a note added later never moves
+// one written earlier. A symbol too short for its time slot keeps the room it
+// needs to be read and pushes the next one along — that depends only on what
+// came before, so it still moves nothing behind it. Null when the written
+// symbols will not fit the division; the caller then uses the content-driven
+// rule for that one division.
+// ponytail: a run of very short values (dantas, or danta rests from quick
+// gaps with quantize off) can overflow and fall back; a display-quantize grid
+// like Logic's is the upgrade if that is common.
+function timeCells(b, width, cap) {
+  const inner = width - 2 * BOX_PAD;
+  const per = inner / cap;
+  let end = 0;
+  let need = 0;
+  let floors = 0;
+  const out = [];
+  for (const e of b.entries) {
+    const x = Math.max((e.at - b.at) * per, end);
+    // Derived pad rests are only the unplayed tail, about to be replaced, and
+    // a held note's bar is still growing: both take their time slot, squeezed
+    // to fit, and never decide the layout — otherwise a box would switch rules
+    // mid-hold, or the moment a note replaced the padding.
+    if (e.index == null || isHeld(e)) {
+      const w = Math.max(0, Math.min(e.units * per, inner - x));
+      out.push({ x: Math.min(x, inner), w });
+      end = Math.min(x, inner) + w;
+      continue;
+    }
+    // Half the usual air: a vasu's slot under a plain four is 26.5u, and the
+    // full 27u floor pushed every pair of them off the end of the division.
+    const floor = glyphW(e.note) + GLYPH_GAP;
+    floors += floor;
+    const w = Math.max(e.units * per, floor);
+    out.push({ x, w });
+    end = need = x + w;
+  }
+  if (need <= inner + 0.001) return out;
+  // Pushed past the end by short values (quick gaps write danta rests): the
+  // grid compresses to fit, so notes keep their order and relative places
+  // instead of the division switching to the other spacing rule. Only a run
+  // that would not fit even packed tight falls back.
+  if (floors > inner) return null;
+  const k = inner / need;
+  return out.map(c => ({ x: c.x * k, w: c.w * k }));
+}
+
 // Pack notes into boxes, pad each box, then flow boxes into rows.
 // Every entry carries its x (px, relative to LPAD) and `index` — its position
 // in state.notes, or null when it is a derived pad rest.
@@ -537,6 +597,13 @@ export function scoreRows(notes = state.notes, bars = state.bars,
     // and the air, so the cells inside it stay exactly as wide as they asked
     // for instead of being squeezed by the space put either side of them.
     b.width = Math.max(gridBox, b.content + b.air + 2 * BOX_PAD);
+    // Live entry: a division being played into keeps its share and its symbols
+    // sit on a time grid (timeCells), so a new note moves nothing before it.
+    // A run too dense for the grid falls back to the content rule above.
+    if (entryBox(b, cap) && timeCells(b, gridBox, cap)) {
+      b.prop = true;
+      b.width = gridBox;
+    }
     place(b);
   }
 
@@ -613,6 +680,15 @@ export function scoreRows(notes = state.notes, bars = state.bars,
   // twice a bindu's) while the divisions themselves stay equal.
   rows.forEach(r => {
     r.boxes.forEach((b, boxIndex) => {
+      const tc = b.prop && timeCells(b, b.width, cap);
+      if (tc) {
+        b.entries.forEach((e, i) => {
+          e.x = b.x + BOX_PAD + tc[i].x;
+          e.w = tc[i].w;
+          e.box = boxIndex;
+        });
+        return;
+      }
       // The cells fill the division MINUS its padding, and start one pad in,
       // so the notation sits inside the division rather than against its
       // lines. Each cell is then a SCALED share plus an ABSOLUTE gap: the
@@ -1297,15 +1373,16 @@ function rowSVG(row, hl, at, interactive = true) {
 
   entries.forEach((entry, i) => {
     const prev = entries[i - 1];
-    if (entry.tie && isNote(prev) && isNote(entry) && prev.box !== entry.box) {
+    if (entry.tie && isNote(prev) && isNote(entry) && prev.box !== entry.box
+        && !isHeld(entry)) {
       s += drawJoin(prev, entry);
     }
   });
 
   const head = entries[0];
   const tail = entries[entries.length - 1];
-  if (head && head.tie && isNote(head)) s += drawStub(head, LPAD);
-  if (row.tieOut && isNote(tail)) s += drawStub(tail, RX);
+  if (head && head.tie && isNote(head) && !isHeld(head)) s += drawStub(head, LPAD);
+  if (row.tieOut && isNote(tail) && !isHeld(tail)) s += drawStub(tail, RX);
 
   // Playing highlight. ONE thing happens: the symbol that is sounding is drawn
   // in a different colour. Nothing is laid over the staff and nothing moves.
@@ -1345,6 +1422,9 @@ function rowSVG(row, hl, at, interactive = true) {
 
   entries.forEach(e => {
     const n = e.note;
+    // While playing in, the unplayed tail of the division is left blank rather
+    // than crushed full of derived rests; they come back at the settle.
+    if (interactive && e.index == null && row.boxes[e.box]?.prop) return;
     const x = glyphX(e);
     // The entry that is SOUNDING, not merely one sharing its source index: a
     // note split across a division line is two entries with one index, and
@@ -1366,6 +1446,27 @@ function rowSVG(row, hl, at, interactive = true) {
 
     const y = noteY(n.svaraIndex, n.oct);
     const variant = n.head === 'f' ? true : n.head === 'o' ? false : SVARAS[n.svaraIndex].filled;
+
+    // A key still held is not a symbol yet — its length is still being played.
+    // Like a DAW's piano roll it is drawn as the head plus a bar growing to
+    // the right, at its time position, and becomes its symbol on release.
+    // Its cells span its time exactly (timeCells), so the bar is the length.
+    if (interactive && isHeld(e)) {
+      const r = GOLI_R * NOTE_SCALE;
+      const x0 = LPAD + e.x;
+      const hx = x0 + r + GLYPH_GAP;
+      const bx = e.tie ? x0 : hx;
+      const bw = Math.max(0, x0 + e.w - bx);
+      const fill = variant ? ink : 'none';
+      s += `<g ${glyphAttrs(e)} data-held="1">`
+        + (e.tie ? '' : ledgerLines(hx, n.svaraIndex, n.oct)
+          + `<circle cx="${hx.toFixed(2)}" cy="${y}" r="${r.toFixed(2)}" fill="${fill}"`
+          + ` stroke="${ink}" stroke-width="${NOTE_INK_W.toFixed(3)}"/>`)
+        + `<rect class="holdbar" x="${bx.toFixed(2)}" y="${(y - HOLD_BAR_H / 2).toFixed(2)}"`
+        + ` width="${bw.toFixed(2)}" height="${HOLD_BAR_H}" rx="${HOLD_BAR_H / 2}"`
+        + ` fill="${STAFF.playInk}" fill-opacity="0.55"/></g>`;
+      return;
+    }
     // M2 is the one variant that is SHARP, so it cannot use the filled goli
     // that means "lowered". Its notehead is a triangle instead.
     const isM2 = variant && n.svaraIndex === MA_INDEX;

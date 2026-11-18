@@ -13,6 +13,7 @@ import { pluck, freqOf } from './audio.js';
 import { render, renderSoon, padRests, glyphFor } from './notation.js';
 import { newBarId, repeatPairs } from './repeat-model.js';
 import { lessonKey } from './lesson.js';
+import { boxUnits } from './timesig.js';
 
 // Metronome entry state. It stays dormant until the first note is entered
 // while the standalone metronome is running.
@@ -42,7 +43,29 @@ const keyIsHeld = () => metroEntry.held > 0;
 // in timing units, rather than counting ticks — so setTimeout drift and a BPM
 // change part-way through a hold both come out right.
 const heldPromotions = new Map();
+// The staff reads this to draw a held note as a length bar (see state.holding).
+state.holding = heldPromotions;
 let holdTimer = null;
+
+// LIVE ENTRY (state.entering). Starts at the first key, stays on while keys
+// keep coming, and ends ENTRY_SETTLE_MS after the last key comes up — at which
+// point the page reflows once into its normal spacing, the way Logic tidies
+// the score when recording stops rather than on every note.
+// ponytail: fixed 1.5 s settle, make it a setting if players pause longer mid-phrase.
+const ENTRY_SETTLE_MS = 1500;
+let settleTimer = null;
+function touchEntry(from) {
+  if (!state.entering) { state.entering = true; state.entryFrom = from ?? totalUnits(); }
+  clearTimeout(settleTimer);
+  settleTimer = null;
+  if (heldPromotions.size) return;
+  settleTimer = setTimeout(() => {
+    settleTimer = null;
+    if (heldPromotions.size) return;
+    state.entering = false;
+    renderSoon();
+  }, ENTRY_SETTLE_MS);
+}
 let holdLast = 0;
 
 // THE TAKE'S GRID — where a key lands is decided by WHEN it was pressed against
@@ -389,6 +412,11 @@ export function placeAt(item, unit, from = null) {
   let idx = insertIndexAt(notes, u);
   if (idx === notes.length) {
     const total = notes.reduce((s, n) => s + unitsOfNote(n), 0);
+    // Past the music, snap to the symbol's own value (at most a division), so a
+    // Maguru dropped on an empty 4/4 staff starts the division instead of
+    // being split across its line behind a run of odd rests.
+    const grid = Math.max(1, Math.min(boxUnits(), unitsOfNote(moving || item)));
+    u = Math.max(total, Math.floor(u / grid) * grid);
     if (u > total) notes.push(...padRests(u - total, total % TIME_UNITS_PER_BEAT));
     idx = notes.length;
   }
@@ -472,6 +500,7 @@ export function startHoldPromotion(index, initialSym = state.sym, pressedAt) {
   // begin/endMetronomeEntry() and counts keys through metroEntry.held, which
   // has never had anything to do with heldPromotions, and endMetronomeEntry()
   // starts the shared clock itself.
+  if (!state.lesson) touchEntry(unitsBefore(index));
   const base = SOUND[initialSym] ? initialSym : 'bindu';
   const floorUnits = state.holdWrites === 'palette'
     ? Math.round(SOUND[base].dur * TIME_UNITS_PER_BEAT)
@@ -541,6 +570,9 @@ export function startHoldPromotion(index, initialSym = state.sym, pressedAt) {
     }
     heldPromotions.delete(index);
     if (!heldPromotions.size && !idleAccruing()) stopHoldClock();
+    // The length bar becomes the written symbol now, and the settle starts.
+    touchEntry();
+    renderSoon();
   };
 }
 
@@ -587,7 +619,7 @@ export function advanceHoldPromotions(dtMs = entryBeatMs()) {
       Math.max(promotion.floorUnits, Math.floor(heldUnits(promotion) + 1e-9)),
     );
     setHeldUnits(index, held);
-    if (held >= capUnits) heldPromotions.delete(index);
+    if (held >= capUnits) { heldPromotions.delete(index); touchEntry(); }
   });
 
   if (!heldPromotions.size && !idleAccruing()) stopHoldClock();
@@ -780,10 +812,13 @@ export function closeMetronomeSilence(pressedAt) {
   }
   const onset = snap(gridPos(t));
   pendingRaw = { id: grid.id, from: grid.from, on: gridPos(t) };
-  // A key still down (legato) ends where this one starts.
+  // A key still down (legato) ends where this one starts. Floored at a danta,
+  // NOT at the quantum: the next key is what ends it, and holding it to a whole
+  // quantum pushed every following note later — under a bindu grid a quick run
+  // ran beats ahead of the metronome and swallowed the rests between phrases.
   heldPromotions.forEach((p, i) => {
     if (state.notes[i]?.take) state.notes[i].take.off = pendingRaw.on;
-    setHeldUnits(i, Math.max(minRecorded(), onset - unitsBefore(i)));
+    setHeldUnits(i, Math.max(MIN_HOLD_UNITS, onset - unitsBefore(i)));
     heldPromotions.delete(i);
   });
   metroEntry.idleUnits = 0;
@@ -796,7 +831,7 @@ export function closeMetronomeSilence(pressedAt) {
   } else if (onset < now && last?.type === 'note') {
     // The last note's release rounded past this onset: it ends here.
     setHeldUnits(state.notes.length - 1,
-      Math.max(minRecorded(), onset - unitsBefore(state.notes.length - 1)));
+      Math.max(MIN_HOLD_UNITS, onset - unitsBefore(state.notes.length - 1)));
   } else return;
   state.preset = null;
   render();
@@ -842,6 +877,8 @@ export function onMetronomeTick(heardAt) {
   // moments the same measurement gets flushed.
   accrueIdle();
   if (flushIdle()) {
+    // Rests the metronome writes between phrases keep a live take live.
+    if (state.entering) touchEntry();
     state.preset = null;
     render();
   }
@@ -896,9 +933,10 @@ function requantizeTake(id) {
     const on = Math.max(cursor, ons[k]);
     if (on > cursor) out.push(...padRests(on - cursor, cursor % TIME_UNITS_PER_BEAT));
     let len = n.take.off != null ? snap(n.take.off) - on : unitsOfNote(n);
-    if (k + 1 < played.length) len = Math.min(len, ons[k + 1] - on);
-    len = Math.min(HOLD_CAP_BEATS * TIME_UNITS_PER_BEAT,
-      Math.max(n.take.min ?? 0, minRecorded(), len));
+    len = Math.max(n.take.min ?? 0, minRecorded(), len);
+    // The next note's onset ends it, as it does live — see closeMetronomeSilence().
+    if (k + 1 < played.length) len = Math.max(MIN_HOLD_UNITS, Math.min(len, ons[k + 1] - on));
+    len = Math.min(HOLD_CAP_BEATS * TIME_UNITS_PER_BEAT, len);
     writeUnits(n, len);
     n.take.at = on;
     out.push(n);

@@ -5,6 +5,7 @@
 // a rule from docs/reference/DNG-BOX-LAYOUT.md.
 
 import assert from 'node:assert/strict';
+import { state } from '../src/renderer/state.js';
 import { padRests, scoreRows, expandScore, boxUnits, usableWidth } from '../src/renderer/notation.js';
 import {
   SOUND, TIME_UNITS_PER_BEAT, BOXES_PER_ROW, GLYPH_W, GLYPH_W_OF, BOX_PAD, GLYPH_GAP,
@@ -461,6 +462,34 @@ check('every sheet colour converts to three real channels', () => {
 check('and the page pill, not the padding, sets the bottom of the type area', () => {
   assert.ok(PILL_BOTTOM + PILL_H_MM > SHEET_PAD_BOT);
   assert.ok(SHEET_PAD_TOP + PILL_BOTTOM + PILL_H_MM < PAGE_H_MM);
+});
+
+console.log('\nlive entry');
+
+// While playing in, a DAW never moves a note it already wrote: each symbol sits
+// at its time in the division. Adding notes one at a time must leave every
+// earlier glyph exactly where it was.
+check('adding a note during entry moves nothing written before it', () => {
+  const seq = ['bindu', 'vasu', 'vasu', 'bindu', 'bindu', 'praya', 'praya', 'vasu', 'guru']
+    .map((s, i) => note(s, i % 7));
+  state.entering = true; state.entryFrom = 0;
+  try {
+    let prev = [];
+    for (let n = 1; n <= seq.length; n++) {
+      const xs = scoreRows(seq.slice(0, n), [], []).flatMap(r => r.boxes.flatMap(b =>
+        b.entries.filter(e => e.index != null && !e.tie).map(e => [e.index, e.x])));
+      for (const [i, x] of prev) {
+        const now = xs.find(([j]) => j === i);
+        assert.ok(now && Math.abs(now[1] - x) < 1e-6, `note ${i} moved when note ${n - 1} was added`);
+      }
+      prev = xs;
+    }
+  } finally { state.entering = false; }
+});
+
+check('entry layout is off again once entry ends', () => {
+  const rows = scoreRows([note('bindu'), note('bindu')], [], []);
+  assert.ok(!rows.some(r => r.boxes.some(b => b.prop)));
 });
 
 console.log(`\n${passed} checks passed\n`);

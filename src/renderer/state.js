@@ -144,6 +144,16 @@ export const state = {
   // the staff blank where nothing was played. Mutually exclusive.
   fill: 'auto',   // 'auto' | 'metro'
 
+  // LIVE ENTRY, the way a DAW records: while keys are being played the
+  // divisions from `entryFrom` (timing units) on are laid out on a fixed time
+  // grid so nothing already written moves, and the page reflows ONCE when
+  // playing stops. `holding` is score.js's map of held note indices — a held
+  // note is drawn as a head and a growing length bar, not a changing symbol.
+  // Screen state, never saved.
+  entering: false,
+  entryFrom: 0,
+  holding: null,
+
   // tala / scale / tonic
   // The metre, by key into timesig.js's registry (builtins + custom). It is
   // what says how many beats a division holds, so it is real layout state now

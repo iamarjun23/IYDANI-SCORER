@@ -239,6 +239,14 @@ for (const early of [5, 20, 40, 80, 150]) {
   quantize = 4;
   take(120, [[0, 0.05]]);
   is(notes()[0].units, 4, 'vasu quantize: a stab is one vasu');
+  // A run faster than the grid, overlapping keys: the next key ends a note, so
+  // the score must not run ahead of the clock. Each note used to be held to a
+  // whole quantum, and a quick run wrote beats past where the player was.
+  quantize = 8;
+  const RUN = Array.from({ length: 12 }, (_, k) => [k * 0.4, 0.6]);
+  take(96, RUN);
+  const last = notes().at(-1);
+  is(last.at <= Math.round(11 * 0.4 * U) + 8, true, 'bindu quantize: a fast run stays with the clock');
   quantize = 1;
 }
 

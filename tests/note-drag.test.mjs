@@ -38,6 +38,14 @@ reset();
 placeAt(N(4), 40);                      // two beats past the end: rests fill the gap
 assert.deepEqual(svis(), [0, 1, 2, 'r', 'r', 4]);
 
+state.notes.splice(0); state.hist = [];
+placeAt({ ...N(0), sym: 'maguru', dur: 4 }, 13);  // Maguru on an empty 4/4 staff: starts it
+assert.deepEqual(svis(), [0]);
+
+reset();
+placeAt(N(4), 43);                      // past the end, snapped down to the beat
+assert.deepEqual(svis(), [0, 1, 2, 'r', 'r', 4]);
+
 reset();
 assert.equal(placeAt({ svaraIndex: 0, oct: 0, head: 'o' }, 0, 0), false);  // dropped in place
 placeAt({ svaraIndex: 5, oct: 0, head: 'o' }, 24, 0);  // first note to the end, new pitch
