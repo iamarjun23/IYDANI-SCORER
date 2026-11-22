@@ -774,7 +774,17 @@ export function closeMetronomeSilence(pressedAt) {
   // started by the first key, at entryBeatMs() — the same one-beat-a-second
   // rule a held key is already valued by. With it on, metro fill decides.
   pendingRaw = null;
-  if (state.lesson || (state.metroOn && state.fill !== 'metro')) { grid = null; return; }
+  if (state.lesson || (state.metroOn && state.fill !== 'metro')) {
+    // No take grid here, but the hand-off still holds: a key still down ends
+    // where the next one starts. Left growing, it kept lengthening underneath
+    // every note written after it and pushed them all along the sheet.
+    heldPromotions.forEach((p, i) => {
+      setHeldUnits(i, Math.max(p.floorUnits, Math.floor(heldUnits(p, Math.max(0, nowMs() - p.at)) + 1e-9)));
+      heldPromotions.delete(i);
+    });
+    grid = null;
+    return;
+  }
   const t = eventTime(pressedAt) ?? nowMs();
   const end = totalUnits();
   // A pause this long is the player stopping, not a rest: start a new take

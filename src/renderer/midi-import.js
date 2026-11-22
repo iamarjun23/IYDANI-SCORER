@@ -445,22 +445,6 @@ export function midiToScore(buffer, options = {}) {
   return lineToScore(line, { tpq, sourceBpm, saMidi, scale: pickScale(line, tpq, sourceBpm) });
 }
 
-// A recorded TAKE — the raw performance a MIDI keyboard sent, kept the way a
-// DAW keeps it: `{ midi, on, off, vel }` with on/off in milliseconds, nothing
-// rounded. The notation is worked out from it afterwards, onto `grid` units
-// (1 = danta, 2 = praya, 4 = vasu, 8 = a beat), the way a DAW quantizes a
-// region. Time zero is the first attack. `beatMs` is how long a beat was while
-// it was played — the same beat live entry measured holds against.
-export function takeToScore(events, { beatMs, saMidi = 60, grid = 1 } = {}) {
-  const played = events.filter(e => e.off != null);
-  if (!played.length) throw new Error('Nothing was played in this take.');
-  const t0 = Math.min(...played.map(e => e.on));
-  const notes = played.map(e => ({ start: e.on - t0, end: e.off - t0, midi: e.midi, vel: e.vel }));
-  // tpq = ms per beat makes a millisecond one tick. The tempo is not rescaled:
-  // the take was played against a beat the player chose.
-  return lineToScore(pickMelody(notes), { tpq: beatMs, sourceBpm: 60000 / beatMs, saMidi, scale: 1, grid });
-}
-
 function lineToScore(line, { tpq, sourceBpm, saMidi, scale, grid = 1 }) {
   const shift = octaveShiftFor(line.map(n => n.midi), saMidi) * 12;
   // Quantize: every attack and length snaps to the grid. grid 1 is the danta,

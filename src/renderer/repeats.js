@@ -563,6 +563,8 @@ export function installRepeatTool() {
   // to go back on afterwards, and the pending line has to be measured again
   // against rows that may have re-flowed under it.
   document.addEventListener('score:rendered', () => { paint(); refreshPending(); });
+  // Rows rebuilt for the playhead lose a selected or hovered brace's classes.
+  document.addEventListener('score:playhead', () => { if (state.bars.length) paint(); });
   window.addEventListener('resize', refreshPending);
   window.addEventListener('scroll', refreshPending, true);
 }

@@ -19,7 +19,7 @@ import {
   clockSink, sendClockAt, sendClockStart, sendClockStop,
 } from './midi-out.js';
 import { semiOf } from './config.js';
-import { render, expandScore } from './notation.js';
+import { render, renderPlayhead, expandScore } from './notation.js';
 import { resolveMark } from './repeat-model.js';
 import { clickForBeat, stopScheduledClicks, stopDriving } from './metronome.js';
 import {
@@ -158,6 +158,7 @@ export function startPlay(range = null, seq = null, start = 0) {
   // resume scanning from 0 hit a hole and the highlight never moved again.
   let shown = start - 1;              // item the highlight is on
   let shownAt = null;
+  let drawAfter = 0;                  // performance.now() the next redraw may run at
   current = { seq, shown: start };
 
   // The metronome's grid, anchored to the SAME origin as the notes and
@@ -254,16 +255,29 @@ export function startPlay(range = null, seq = null, start = 0) {
         Math.max(0, Math.floor(item.n.dur || 1) - 1),
       );
       const hlAt = item.at + beats * TIME_UNITS_PER_BEAT;
-      if (at !== shown || hlAt !== shownAt) {
+      // The sound is already on the audio clock; this is only the picture, so
+      // it gets a BUDGET: after a redraw, wait twice what it cost before the
+      // next. A fast machine never notices (a 7 ms redraw still allows ~47 a
+      // second), and a slow one drops highlight steps instead of spending the
+      // whole UI thread on them — measured at a 6x CPU slowdown, dantas at
+      // 240 bpm otherwise held it at 100%, which leaves nothing for input.
+      if ((at !== shown || hlAt !== shownAt) && performance.now() >= drawAfter) {
+        const t0 = performance.now();
         shown = at;
         shownAt = hlAt;
         current.shown = at;
         state.hlIndex = item.i;
         state.hlAt = hlAt;
-        render();
+        renderPlayhead();
         // After the redraw, so the row the highlight just moved into is the one
         // on the page to measure. Costs nothing on the beats that stay in it.
         followPlayhead();
+        // Read back a layout so the timing includes the style and layout the
+        // swap caused. Not extra work: the frame would do it anyway, and it
+        // is most of the cost — timing the swap alone measured a fifth of it.
+        void document.body.offsetHeight;
+        const t1 = performance.now();
+        drawAfter = t1 + 2 * (t1 - t0);
       }
     }
 

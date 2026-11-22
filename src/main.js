@@ -168,7 +168,7 @@ function createWindow() {
 // Electron gives the handler no sysex flag in `details`, so the distinction
 // cannot be made here — which is why it is made in the renderer instead.
 function applyPermissions() {
-  const ALLOWED = new Set(['midiSysex', 'media']);
+  const ALLOWED = new Set(['midiSysex']);
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
     callback(ALLOWED.has(permission));
   });

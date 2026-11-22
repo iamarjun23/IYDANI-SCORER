@@ -14,7 +14,7 @@
 
 import { state } from './state.js';
 import {
-  instrumentById, sampleUrl, SAMPLE_GAIN, RELEASE_SHARE, RELEASE_MAX_SECONDS, RING_MIN_SECONDS, AUDIO_LATENCY_HINT, semiOf,
+  instrumentById, sampleUrl, SAMPLE_GAIN, RELEASE_SHARE, RELEASE_MAX_SECONDS, RING_MIN_SECONDS, AUDIO_LATENCY_HINT, AUDIO_LATENCY_HINT_OTHER, semiOf,
   SAMPLE_LOOP_AT, SAMPLE_LOOP_MIN, SAMPLE_LOOP_SEARCH, SAMPLE_SUSTAIN_MAX, SAMPLE_SUSTAIN_LOOP,
   HELD_FADE_T,
   SUSTAIN_FLOOR, SUSTAIN_DECAY_T, SUSTAIN_DECAY_MIN_T, SUSTAIN_TONE_T,
@@ -26,7 +26,10 @@ let ctx = null;
 
 function audio() {
   if (!ctx) {
-    ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: AUDIO_LATENCY_HINT });
+    const win = window.hamsleka?.platform === 'win32';
+    ctx = new (window.AudioContext || window.webkitAudioContext)({
+      latencyHint: win ? AUDIO_LATENCY_HINT : AUDIO_LATENCY_HINT_OTHER,
+    });
   }
   // Autoplay policy parks a context created before any gesture; every entry
   // point runs through here so the first real note wakes it.
@@ -86,8 +89,12 @@ async function loadInstrument(next) {
       return null;
     }
   }));
-  if (inst !== next) return;
   for (const entry of decoded) {
+    // One sample per task: the loop search is ~3 ms a note here and several
+    // times that on an old machine, and 26 of them back to back froze the
+    // window while it was opening.
+    await nextTask();
+    if (inst !== next) return;
     if (!entry) continue;
     const [midi, buf] = entry;
     buffers.set(midi, buf);
@@ -96,11 +103,18 @@ async function loadInstrument(next) {
     // The loop is cut out of a duplicate, not out of the recording — see
     // loopBuffers. The copy is only kept if a loop was actually found.
     if (SAMPLE_SUSTAIN_LOOP) {
-      const copy = ctx.createBuffer(1, src.length, buf.sampleRate);
-      const data = copy.getChannelData(0);
-      data.set(src);
+      const data = src.slice();
       const loop = buildSustainLoop(data, buf.sampleRate, freqOfMidi(midi));
-      if (loop) { loops.set(midi, loop); loopBuffers.set(midi, copy); }
+      if (loop) {
+        // A looped voice never plays past loopEnd (nothing turns `loop` off),
+        // so the copy stops there: ~0.6 s instead of the whole 8 s file, about
+        // 38 MB less for the Steinway set.
+        const keep = Math.min(data.length, Math.ceil(loop.end * buf.sampleRate) + 128);
+        const copy = ctx.createBuffer(1, keep, buf.sampleRate);
+        copy.copyToChannel(data.subarray(0, keep), 0);
+        loops.set(midi, loop);
+        loopBuffers.set(midi, copy);
+      }
     }
   }
   const lead = [...onsets.values()];
@@ -108,6 +122,19 @@ async function loadInstrument(next) {
   console.info(`[audio] ${next.name}: ${buffers.size}/${notes.length} note samples decoded`
     + ` — skipping ${(meanLead * 1000).toFixed(0)}ms of lead-in silence,`
     + ` ${loops.size} with a sustain loop`);
+}
+
+// Let the window draw and take input, then carry on. NOT setTimeout: Chromium
+// throttles timers in a hidden or covered window to one a second, which made
+// the sample load take 22 s for anyone who switched away while the app opened.
+// A posted message is not throttled. The port is closed after its one message,
+// or an open port keeps a Node test process alive forever.
+export function nextTask() {
+  return new Promise(r => {
+    const ch = new MessageChannel();
+    ch.port1.onmessage = () => { ch.port1.close(); r(); };
+    ch.port2.postMessage(0);
+  });
 }
 
 // The rate factor that puts recording `src` of the current instrument on
@@ -762,7 +789,11 @@ export async function renderSequenceOffline(sequence, bpm, clicks = null) {
   if (duration > 600) throw new Error('MP3 export is limited to 10 minutes.');
 
   const sampleRate = 44100;
-  const offline = new OfflineContext(2, Math.ceil(duration * sampleRate), sampleRate);
+  // ONE channel: every voice and click is mono and nothing is panned, so a
+  // stereo render was the same signal stored twice — 212 MB for a ten-minute
+  // export, and twice the encoding work, on the UI thread, for no difference
+  // anyone can hear.
+  const offline = new OfflineContext(1, Math.ceil(duration * sampleRate), sampleRate);
   const trim = createMasterBus(offline);
   const struck = new Map();
 

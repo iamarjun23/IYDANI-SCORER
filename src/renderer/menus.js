@@ -237,8 +237,15 @@ export function wireMenus() {
 
   // doc tab change updates the tala line
   document.addEventListener('tala:changed', updateTalaLine);
-  // update zoom container layout when score is re-rendered
-  document.addEventListener('score:rendered', updateZoomContainerSize);
+  // Resize the zoom container when the page's size actually changes. This was a
+  // 'score:rendered' listener, which read offsetWidth/offsetHeight straight after
+  // every render — a forced synchronous layout on every beat of playback, the
+  // single largest JS cost there. The observer runs after layout the browser was
+  // doing anyway, and only when the size changed.
+  const wrap = document.getElementById('sheetwrap');
+  if (wrap && typeof ResizeObserver === 'function') {
+    new ResizeObserver(() => updateZoomContainerSize()).observe(wrap);
+  }
 }
 
 export { updateTalaLine, setZoom, fitPage };

@@ -301,4 +301,14 @@ export function installInspector() {
     openSection(selAt);
     syncRange();
   });
+  // Only the playhead moved. With no division open there is nothing here that
+  // draws it, so nothing to do — the rows were not touched by a selection.
+  // With one open, its roll carries the playhead and the rebuilt rows need
+  // their selection back, exactly as after a full render.
+  document.addEventListener('score:playhead', () => {
+    if (selAt == null) return;
+    if (panel.querySelector('input:focus, select:focus') || sectionBusy()) return;
+    openSection(selAt);
+    syncRange();
+  });
 }

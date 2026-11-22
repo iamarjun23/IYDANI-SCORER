@@ -80,4 +80,30 @@ newDoc();
 assert.equal(tabLabel(docs[1]), 'Untitled', 'a new tab has no file yet');
 assert.equal(tabLabel(docs[0]), 'My_Song');
 
+// A damaged or hand-edited session must not be able to make layout, playback or
+// the metronome build without limit — that is how one number froze the machine,
+// and the autosave would replay it on every launch. Restoring it renders (for
+// real) and returns, with every number back inside what the editor can write.
+const { MAX_NOTE_BEATS, MAX_REPEAT, MAX_BPM, beatSeconds } = await import('../src/renderer/config.js');
+store.set(KEY, JSON.stringify({ active: 0, docs: [{
+  title: 'Poisoned', tala: 'chatusra', bpm: 1e9, breaks: [3, 'x', null],
+  notes: [{ ...note(0), dur: 1e9 }, { ...note(1), dur: -4 }, null, { ...note(2), dur: '2' }],
+  bars: [{ id: 'a', unit: 0, kind: 'open', count: 1e9 }, { id: 'b', unit: 8, kind: 'close', count: 1e9 },
+    { id: 'c', unit: 'nowhere', kind: 'open' }],
+}] }));
+assert.equal(restoreDocs(), true, 'a poisoned session still opens');
+assert.equal(state.notes.length, 3, 'a note that is not an object is dropped');
+assert.equal(state.notes[0].dur, MAX_NOTE_BEATS, 'an endless note is capped');
+assert.equal(state.notes[1].dur, 1, 'a negative length becomes one beat');
+assert.equal(state.notes[2].dur, 2, 'a length written as text is kept');
+assert.deepEqual(state.bars.map(b => b.count), [MAX_REPEAT, MAX_REPEAT], 'repeat counts are capped');
+assert.equal(state.bars.length, 2, 'a mark with no position is dropped');
+assert.deepEqual(state.breaks, [3]);
+assert.equal(state.bpm, MAX_BPM, 'the tempo is clamped');
+assert.equal(beatSeconds(1e9), 60 / MAX_BPM, 'and the clock clamps it on its own as well');
+// `1e400` is valid JSON and parses to Infinity: the default, not the ceiling.
+const { safeScore, BPM } = await import('../src/renderer/config.js');
+assert.equal(safeScore(JSON.parse('{"bpm":1e400,"notes":[{"dur":1e400}]}')).bpm, BPM);
+assert.equal(safeScore(JSON.parse('{"notes":[{"dur":1e400}]}')).notes[0].dur, 1);
+
 console.log('autosave tests passed');

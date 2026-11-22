@@ -3,7 +3,7 @@
 // open document.
 
 import { state, docs, getActiveDoc } from './state.js';
-import { BPM } from './config.js';
+import { BPM, safeScore } from './config.js';
 import { render } from './notation.js';
 import { updateUndoButtons } from './history.js';
 import { clearBars, loadPreset } from './score.js';
@@ -147,10 +147,10 @@ function initFileLoader() {
       } else {
         // .dng.json / .json — native format
         const text = await file.text();
-        const data = JSON.parse(text);
-        state.notes = data.notes || [];
-        state.bars = data.bars || [];
-        state.breaks = data.breaks || [];
+        const data = safeScore(JSON.parse(text) || {});
+        state.notes = data.notes;
+        state.bars = data.bars;
+        state.breaks = data.breaks;
         // A file does not carry where somebody was editing it, so the pointer
         // starts clear on the score that has just been opened.
         state.lastBreak = null;
@@ -161,7 +161,7 @@ function initFileLoader() {
         // score is silently re-barred.
         if (data.timeSig) registerTala(data.timeSig);
         state.tala = data.tala && allTalas()[data.tala] ? data.tala : 'chatusra';
-        state.bpm = data.bpm || BPM;
+        state.bpm = data.bpm;
         // The tonic travels with the score. Without this every file opened
         // at Sa = C whatever key it was written in, which also dropped the
         // whole line into the octave that was never recorded — so every

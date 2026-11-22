@@ -1672,17 +1672,10 @@ export function render() {
   }
   const seams = [];
   const html = rows.map((row, i) => {
-    const yMin = rowExtent(row).yMin;
-    // The badge belongs to the row the break falls AFTER, so it reads as the
-    // end of a line rather than the start of one.
     const next = rows[i + 1];
     if (next && next.brk && next.brkOrd === state.lastBreak) ghosted = true;
-    const mark = next && next.brk
-      ? breakMark(next.brkOrd, yMin, next.brkOrd === state.lastBreak) : '';
     seams.push(at && i && at[i].page !== at[i - 1].page ? pageEnd(at[i - 1]) : '');
-    return `<div class="srow" data-row="${i}">${rowGutter(i + 1, yMin)}${mark}`
-      + `${repeatBadges(row, yMin)}`
-      + `${rowSVG(row, state.hlIndex, state.hlAt)}</div>`;
+    return rowMarkup(rows, i);
   });
   // No row claimed it: the break is out past the last division, so say so
   // under the staff rather than leaving the user with a break they cannot see.
@@ -1701,9 +1694,47 @@ export function render() {
   } else {
     score.innerHTML = html.map((h, i) => seams[i] + h).join('') + tail;
   }
-  Object.assign(shown, { score, frame, rows: html });
+  Object.assign(shown, { score, frame, rows: html, rowData: rows, hl: state.hlIndex });
   updateSheetMeta();
   document.dispatchEvent(new CustomEvent('score:rendered'));
+}
+
+function rowMarkup(rows, i) {
+  const row = rows[i];
+  const yMin = rowExtent(row).yMin;
+  // The badge belongs to the row the break falls AFTER, so it reads as the
+  // end of a line rather than the start of one.
+  const next = rows[i + 1];
+  const mark = next && next.brk
+    ? breakMark(next.brkOrd, yMin, next.brkOrd === state.lastBreak) : '';
+  return `<div class="srow" data-row="${i}">${rowGutter(i + 1, yMin)}${mark}`
+    + `${repeatBadges(row, yMin)}`
+    + `${rowSVG(row, state.hlIndex, state.hlAt)}</div>`;
+}
+
+// The playhead moved and nothing else did — playback's case, many times a
+// second. render() rebuilt the markup of EVERY row to find the one or two that
+// changed, and everything listening to 'score:rendered' rescanned the sheet:
+// measured with the CPU slowed 6x, a run of dantas at 240 bpm held the UI
+// thread at 99% and still drew only a third of the highlight steps. Only the
+// rows holding the note lit before and the note lit now can differ, so only
+// those are rebuilt. The layout is the one render() last made; any edit goes
+// through render() and replaces it. Listeners that draw the playhead
+// themselves take 'score:playhead'.
+export function renderPlayhead() {
+  const score = document.getElementById('score');
+  const rows = shown.rowData;
+  const els = rows && shown.score === score && score.querySelectorAll
+    && score.querySelectorAll(':scope > .srow');
+  if (!els || els.length !== rows.length) return render();
+  const lit = new Set([shown.hl, state.hlIndex]);
+  rows.forEach((row, i) => {
+    if (!row.boxes.some(b => b.entries.some(e => e.index != null && lit.has(e.index)))) return;
+    const h = rowMarkup(rows, i);
+    if (h !== shown.rows[i]) { els[i].outerHTML = h; shown.rows[i] = h; }
+  });
+  shown.hl = state.hlIndex;
+  document.dispatchEvent(new CustomEvent('score:playhead'));
 }
 
 // The three read-only fields under the sheet header. They mirror app state

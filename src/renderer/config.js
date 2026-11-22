@@ -29,12 +29,51 @@ export const BPM = 60;
 // further note is ever scheduled AND the "have we reached the end" test never
 // fires either — the transport sits playing forever, silent, with nothing left
 // that can move it on. A tempo field cleared mid-edit is enough to do it.
+//
+// It is clamped to MIN_BPM..MAX_BPM as well, which every tempo control already
+// does. The other way out of range is a score file, and it is the dangerous
+// one: the metronome lays down one click per beat inside its look-ahead window,
+// so `"bpm": 1e9` in a file asked for millions of audio voices in one pass.
 export function beatSeconds(bpm = null) {
   const n = Number(bpm);
-  return 60 / (Number.isFinite(n) && n > 0 ? n : BPM);
+  return 60 / (Number.isFinite(n) && n > 0 ? Math.min(MAX_BPM, Math.max(MIN_BPM, n)) : BPM);
 }
 export const MIN_BPM = 20;
 export const MAX_BPM = 240;
+
+// A score from OUTSIDE the app — an opened file, the autosave, a lesson — is
+// made safe to walk before anything walks it. Layout steps through a note's
+// length and playback copies a repeated section `count` times, so a single
+// absurd number in a hand-edited or damaged file (`"dur": 1e9`, `"count": 1e9`)
+// built entries until memory ran out — measured on the old code, ~2 MB per
+// thousand beats of one note. That can stall the whole machine, not just the
+// app, and the autosave would bring it straight back on the next launch.
+// Mutates and returns `d`. MAX_NOTE_BEATS is far past anything the editor
+// writes (a hold stops at HOLD_CAP_BEATS, 64). MAX_REPEAT is what repeatMark()
+// DRAWS — it clamps the dots to 2..4 — so a file asking for x10 used to show
+// four dots and play ten times; now the ink and the sound agree.
+export const MAX_NOTE_BEATS = 256;
+export const MAX_REPEAT = 4;
+export function safeScore(d) {
+  const num = v => (typeof v === 'number' || typeof v === 'string') && Number.isFinite(Number(v));
+  d.notes = (Array.isArray(d.notes) ? d.notes : []).filter(n => n && typeof n === 'object');
+  for (const n of d.notes) {
+    if (n.dur === undefined) continue;
+    const dur = Number(n.dur);
+    n.dur = num(n.dur) && dur > 0 ? Math.min(dur, MAX_NOTE_BEATS) : 1;
+  }
+  d.bars = (Array.isArray(d.bars) ? d.bars : [])
+    .filter(b => b && typeof b === 'object' && num(b.unit) && Number(b.unit) >= 0);
+  for (const b of d.bars) {
+    if (b.count !== undefined) {
+      b.count = Math.min(MAX_REPEAT, Math.max(2, Math.round(Number(b.count)) || 2));
+    }
+  }
+  d.breaks = (Array.isArray(d.breaks) ? d.breaks : []).filter(num);
+  const bpm = Number(d.bpm);
+  d.bpm = num(d.bpm) && bpm > 0 ? Math.round(Math.min(MAX_BPM, Math.max(MIN_BPM, bpm))) : BPM;
+  return d;
+}
 export const MAX_HIST = 120;
 
 export const COL = [
@@ -430,7 +469,12 @@ export const RELEASE_MAX_SECONDS = 0.4;
 // same machine (2.7 ms base + the device). The cost is headroom: on a slow
 // machine a tiny buffer can crackle under load. If it does, 0.003 measured
 // 26 ms and 'interactive' puts it back.
+// WINDOWS ONLY (audio.js). CoreAudio's default is already ~10 ms, so a Mac gains
+// nothing from 0 and pays for it: the smallest buffer means a real-time audio
+// thread waking every few ms for the life of the app, and on an old Mac that
+// thread missing its deadline under load is what stalls the whole machine.
 export const AUDIO_LATENCY_HINT = 0;
+export const AUDIO_LATENCY_HINT_OTHER = 'interactive';
 
 export const SCRIPTS = {
   en: ['Sa', 'Ri', 'Ga', 'Ma', 'Pa', 'Da', 'Ni', 'Sá'],

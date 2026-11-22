@@ -1,7 +1,7 @@
 // Document tabs across the top of the editor. Each tab holds a snapshot
 // of (notes, bars, title, preset, tala) and is swapped in/out of `state`.
 
-import { BPM } from './config.js';
+import { BPM, safeScore } from './config.js';
 import { state, docs, getActiveDoc, setActiveDoc } from './state.js';
 import { updateUndoButtons } from './history.js';
 import { render } from './notation.js';
@@ -43,7 +43,9 @@ function updateTalaLine() {
 
 export function loadDoc(i) {
   setActiveDoc(i);
-  const d = docs[i];
+  // Every tab passes here — the autosave on launch and an opened lesson among
+  // them — so this is where outside data is checked. See safeScore().
+  const d = safeScore(docs[i]);
   state.notes = d.notes;
   state.bars = d.bars;
   state.breaks = d.breaks || [];

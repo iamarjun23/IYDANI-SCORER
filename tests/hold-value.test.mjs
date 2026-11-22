@@ -321,4 +321,22 @@ is(holdMs(4000).sym, 'danta', 'fixed mode: selecting danta writes danta however 
 state.holdWrites = 'time';
 state.sym = 'bindu';
 
+// A key still down when the NEXT one lands ends there, metronome on or off.
+// With the click on and Auto fill there is no take grid, and the hand-off used
+// to be skipped: the first note kept growing under the second and pushed it.
+{
+  const { closeMetronomeSilence } = await import('../src/renderer/score.js');
+  state.metroOn = true; state.fill = 'auto'; state.holdWrites = 'time'; state.bpm = 72;
+  state.notes = []; state.hist = []; clock = 1000;
+  const a = addNote(0, { playSound: false });
+  startHoldPromotion(a, state.sym);
+  clock += 2000; advanceHoldPromotions(2000);
+  const before = state.notes[a].dur;
+  closeMetronomeSilence();
+  addNote(1, { playSound: false });
+  clock += 5000; advanceHoldPromotions(5000);
+  is(state.notes[a].dur, before, 'the held note stops growing when the next key lands');
+  state.metroOn = false;
+}
+
 console.log(`hold-value: ${checks} checks passed`);

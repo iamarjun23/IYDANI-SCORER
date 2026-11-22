@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { buildPlaySeq } from './playback.js';
-import { renderSequenceOffline } from './audio.js';
+import { renderSequenceOffline, nextTask } from './audio.js';
 import { encodeAudioBufferToMp3 } from './mp3-encoder.js';
 import { renderClicks } from './metronome.js';
 
@@ -43,7 +43,9 @@ export async function exportMP3() {
     const Encoder = window.lamejs?.Mp3Encoder;
     const bytes = await encodeAudioBufferToMp3(audioBuffer, Encoder, {
       kbps: 128,
-      yieldControl: () => new Promise(resolve => setTimeout(resolve, 0)),
+      // Not setTimeout — see nextTask(). A covered window would otherwise
+      // encode one block a second.
+      yieldControl: nextTask,
     });
     download(bytes);
   } catch (err) {

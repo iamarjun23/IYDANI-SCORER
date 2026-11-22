@@ -20,12 +20,21 @@
 //                                   entry says so rather than blocking a commit.
 
 import { readFileSync, writeFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 
 const commit = process.argv.includes('--commit');
 let version = JSON.parse(readFileSync('package.json', 'utf8')).version;
 if (commit) {
+  // Level: BUMP=patch|minor|major|none from the committer, else patch — except a
+  // commit touching only docs/tests/markdown, which is not a version (none).
+  const staged = execSync('git diff --cached --name-only', { encoding: 'utf8' }).split('\n').filter(Boolean);
+  const docsOnly = staged.every(f => /^(docs|tests)\//.test(f) || /\.md$/.test(f));
+  const level = process.env.BUMP || (docsOnly ? 'none' : 'patch');
+  if (level === 'none') { console.log('  version: docs/tests only, no bump'); process.exit(0); }
+  if (!['patch', 'minor', 'major'].includes(level)) { console.error(`  version: BUMP must be patch, minor, major or none, not "${level}"`); process.exit(1); }
   const [a, b, c] = version.split('.').map(Number);
-  version = `${a}.${b}.${c + 1}`;
+  // 0.x: a breaking change is a minor (SemVer 0.x); 1.0.0 is a manual decision.
+  version = level === 'major' && a > 0 ? `${a + 1}.0.0` : level !== 'patch' ? `${a}.${b + 1}.0` : `${a}.${b}.${c + 1}`;
   for (const f of ['package.json', 'package-lock.json']) {
     const j = JSON.parse(readFileSync(f, 'utf8'));
     j.version = version;
