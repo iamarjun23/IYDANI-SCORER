@@ -16,7 +16,9 @@ let mainWindow = null;
 // fetch() from file://, which Chromium refuses. Declaring it standard+secure
 // also keeps it out of the way of the CSP's 'self'.
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'dng', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  // corsEnabled: the page is file://, a different origin from dng://, and newer
+  // Chromium (Electron 45) enforces CORS on that fetch where 33 did not.
+  { scheme: 'dng', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ]);
 
 // Only `<instrument folder>/<name>.wav` inside renderer/samples ever resolves —
@@ -41,7 +43,13 @@ function registerSampleProtocol() {
     if (path.dirname(path.dirname(file)) !== SAMPLE_DIR) {
       return new Response('not found', { status: 404 });
     }
-    return net.fetch(pathToFileURL(file).toString());
+    return net.fetch(pathToFileURL(file).toString()).then((res) => {
+      // A file:// page has the opaque origin "null", so only '*' matches it.
+      // These are the app's own public sample files.
+      const headers = new Headers(res.headers);
+      headers.set('Access-Control-Allow-Origin', '*');
+      return new Response(res.body, { status: res.status, headers });
+    });
   });
 }
 

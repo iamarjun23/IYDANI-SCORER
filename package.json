@@ -1,7 +1,7 @@
 {
   "name": "iydani-scorer",
   "productName": "IYDANI",
-  "version": "0.22.2",
+  "version": "0.22.3",
   "description": "IYDANI SCORER — Write - N - Read - N - Play. Desktop DNG notation editor.",
   "main": "src/main.js",
   "author": {
@@ -58,7 +58,7 @@
     "test:composer-take": "node tests/composer-take.test.mjs"
   },
   "devDependencies": {
-    "electron": "^33.0.0",
+    "electron": "^45.4.1",
     "electron-builder": "^25.1.8",
     "electron-reload": "^2.0.0-alpha.1"
   },
