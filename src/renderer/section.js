@@ -126,6 +126,7 @@ function symbolOf(units) {
 // selection, which is the honest answer — that note is gone.
 let selNote = null;
 export function selectNote(index) { selNote = state.notes[index] || null; }
+export const selectedNoteIndex = () => (selNote ? state.notes.indexOf(selNote) : -1);
 
 // ---- the ladder, as lanes -------------------------------------------------
 

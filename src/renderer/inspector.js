@@ -23,7 +23,7 @@ import { setSetting } from './settings.js';
 // inspector -> section, never back.
 import {
   beatsLabel, SYM_LABEL, STHAYI, rollModel, sectionHTML, wireSection, sectionBusy,
-  selectNote,
+  selectNote, selectedNoteIndex,
 } from './section.js';
 
 function ledgersOf(y) {
@@ -179,6 +179,16 @@ export function installInspector() {
       const at = Number(s.dataset.boxAt);
       s.classList.toggle('sel', at >= from && at < to);
     });
+    markNote();
+  };
+
+  // The selected note glows on the sheet (`.glyph.sel`), so it is clear which
+  // one Alt+↑/↓ will move. Every glyph of it: a note split across a division
+  // line is one note drawn twice.
+  const markNote = () => {
+    const i = String(selectedNoteIndex());
+    document.querySelectorAll('#score .glyph[data-src]')
+      .forEach(g => g.classList.toggle('sel', g.dataset.src === i));
   };
 
   const clear = () => {
@@ -213,6 +223,7 @@ export function installInspector() {
     wireSection(panel, model, Number(box.at), cap, () => openSection(selAt),
       to => { clear(); selEnd = null; openSection(to); syncRange(); });
     if (act) panel.querySelector('[data-act="' + act + '"]')?.focus();
+    markNote();
   };
 
   document.getElementById('score').addEventListener('click', e => {
@@ -232,6 +243,10 @@ export function installInspector() {
       }
     }
     if (!g) {
+      // Off a note: nothing is selected, so Alt+↑/↓ cannot move a note picked
+      // earlier. The re-dispatched click from a glyph above keeps its note:
+      // selectNote() runs before it and the target here is the division.
+      if (e.isTrusted) selectNote(null);
       const section = e.target.closest('.section-hit');
       if (!section) { selAt = null; syncRange(); panel.innerHTML = EMPTY; return; }
       if (extend) { selEnd = Number(section.dataset.boxAt); syncRange(); return; }

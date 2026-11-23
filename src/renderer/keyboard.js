@@ -14,8 +14,9 @@ import { isCapturing } from './keymap.js';
 import { state } from './state.js';
 import {
   addNote, beginMetronomeEntry, closeMetronomeSilence, deleteLast, endMetronomeEntry,
-  startHoldPromotion,
+  startHoldPromotion, stepNotePitch,
 } from './score.js';
+import { selectedNoteIndex } from './section.js';
 import { deleteSelectedBar } from './repeats.js';
 import { freqOf, startSustain, stopSustain } from './audio.js';
 import { undo, redo } from './history.js';
@@ -35,10 +36,23 @@ export function installKeyboard() {
   const heldVoices = new Map();
 
   document.addEventListener('keydown', e => {
-    if (e.repeat) return;
     // A slot on the key map is waiting for a keystroke: that keystroke is the
     // binding, not a note.
     if (isCapturing()) return;
+
+    // Alt+↑/↓ moves the SELECTED note — the one glowing on the sheet — one
+    // svara up or down, and nothing when no note is selected. Before the
+    // repeat guard, so holding the keys walks the ladder. Not inside a text
+    // field.
+    if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')
+      && !e.target.closest?.('input, textarea, select, [contenteditable]')) {
+      e.preventDefault();
+      const i = selectedNoteIndex();
+      if (i >= 0) stepNotePitch(i, e.key === 'ArrowUp' ? 1 : -1);
+      return;
+    }
+
+    if (e.repeat) return;
     const k = e.key.toLowerCase();
 
     // shortcuts

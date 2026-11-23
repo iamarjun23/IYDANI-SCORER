@@ -6,7 +6,7 @@ import {
   BPM, DOT_MULT, ENTRY_BEAT_MS, HOLD_CAP_BEATS, HOLD_TICK_UNITS, SOUND, REST_MAP,
   SVARAS, beatSeconds,
   SVARA_TONES, PRESETS, PRESET_BPM, TITLES, TIME_UNITS_PER_BEAT, semiOf,
-  isFilled, hasVariant,
+  isFilled, hasVariant, SVARA_RUNG,
 } from './config.js';
 import { pushHist, updateUndoButtons } from './history.js';
 import { pluck, freqOf } from './audio.js';
@@ -332,6 +332,28 @@ export function setNotePitch(index, svaraIndex, oct) {
   applyPitch(note, svaraIndex, oct);
   state.preset = null;
   render();
+  return true;
+}
+
+// One rung up (dir 1) or down (-1) on the staff's own ladder, skipping the
+// dead rung (the magic line and its octave echoes) the way noteY() does.
+// Null at the edge of the three sthayis. Pure; tests/pitch.test.mjs drives it.
+export function stepRung(svaraIndex, oct, dir) {
+  let pos = oct * 8 + SVARA_RUNG[svaraIndex] + dir;
+  if (((pos % 8) + 8) % 8 === 3) pos += dir;
+  if (pos < -8 || pos > 15) return null;
+  const o = Math.floor(pos / 8);
+  return { svaraIndex: SVARA_RUNG.indexOf(pos - o * 8), oct: o };
+}
+
+// Alt+↑/↓: the note at `index` one svara higher or lower, sounded so the move
+// is heard. One keypress, one undo.
+export function stepNotePitch(index, dir) {
+  const note = state.notes[index];
+  if (!note || note.type !== 'note') return false;
+  const to = stepRung(note.svaraIndex, note.oct, dir);
+  if (!to || !setNotePitch(index, to.svaraIndex, to.oct)) return false;
+  pluck(freqOf(semiOf(note.svaraIndex, note.head), note.oct));
   return true;
 }
 

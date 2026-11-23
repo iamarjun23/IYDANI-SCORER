@@ -143,3 +143,29 @@ for (let svi = 0; svi < 7; svi++) {
 }
 
 console.log(`pitch: letter row ok`);
+
+// ---------- Alt+↑/↓: one rung on the staff's ladder ----------
+//
+// stepRung() must walk every writable rung of all three sthayis, skip the
+// dead rung (Ga -> Ma is one step), and stop at mandra Sa and taara Ni.
+
+const { stepRung } = await import('../src/renderer/score.js');
+const { noteY } = await import('../src/renderer/notation.js');
+
+const up = [];
+for (let p = { svaraIndex: 0, oct: -1 }; p; p = stepRung(p.svaraIndex, p.oct, 1)) up.push(p);
+is(up.length, 21, 'Alt+Up walks all 21 writable rungs');
+is(`${up[20].svaraIndex}/${up[20].oct}`, '6/1', 'the walk ends on taara Ni');
+for (let i = 1; i < up.length; i++) {
+  is(noteY(up[i - 1].svaraIndex, up[i - 1].oct) - noteY(up[i].svaraIndex, up[i].oct) > 0, true,
+    'every step is higher on the staff');
+  const back = stepRung(up[i].svaraIndex, up[i].oct, -1);
+  is(`${back.svaraIndex}/${back.oct}`, `${up[i - 1].svaraIndex}/${up[i - 1].oct}`,
+    'Alt+Down undoes Alt+Up');
+}
+is(stepRung(0, -1, -1), null, 'nothing below mandra Sa');
+is(stepRung(6, 1, 1), null, 'nothing above taara Ni');
+is(`${stepRung(2, 0, 1).svaraIndex}`, '3', 'Ga steps to Ma over the magic line');
+is(`${stepRung(6, 0, 1).svaraIndex}/${stepRung(6, 0, 1).oct}`, '0/1', 'madhya Ni steps to taara Sa');
+
+console.log(`pitch: Alt+arrow ladder ok`);
