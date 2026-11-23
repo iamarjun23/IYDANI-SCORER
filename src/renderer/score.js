@@ -792,11 +792,12 @@ function flushIdle(all = false) {
 // measured to an eighth of a beat while the space between them was measured to
 // a whole one.
 export function closeMetronomeSilence(pressedAt) {
-  // With the metronome off there is no click, so the grid is an invisible one
-  // started by the first key, at entryBeatMs() — the same one-beat-a-second
-  // rule a held key is already valued by. With it on, metro fill decides.
+  // Only a metronome with metro fill places notes in TIME. With it off there is
+  // no count to measure a pause against, so a pause writes nothing and the next
+  // note follows straight on — at the user's word ("it should play next to each
+  // other"). An invisible one-beat-a-second ruler wrote every pause as rests.
   pendingRaw = null;
-  if (state.lesson || (state.metroOn && state.fill !== 'metro')) {
+  if (state.lesson || !state.metroOn || state.fill !== 'metro') {
     // No take grid here, but the hand-off still holds: a key still down ends
     // where the next one starts. Left growing, it kept lengthening underneath
     // every note written after it and pushed them all along the sheet.

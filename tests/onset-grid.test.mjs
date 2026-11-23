@@ -68,21 +68,17 @@ clock = 5000 + 1.5 * BEAT; closeMetronomeSilence();
 addNote(1, { playSound: false });
 assert.deepEqual(onsets(), [0, 12], 'legato note did not start at its onset');
 
-// ---- metronome OFF: an invisible ruler, one beat a second, from the first key.
+// ---- metronome OFF: no count, so a pause writes nothing — notes follow on.
 stopMetronomeEntry();
 state.metroOn = false;
 state.fill = 'auto';
 state.notes = [];
 const SEC = 1000;
-const restUnits = () => state.notes.filter(n => n.type === 'rest')
-  .reduce((u, n) => u + Math.round(n.dur * U), 0);
-play(20000, 0.5 * SEC);               // a vasu on beat 0
-play(20000 + 2 * SEC, 0.5 * SEC);     // a pause, then beat 2
-assert.deepEqual(onsets(), [0, 16], 'metronome off: the pause was not kept');
-assert.equal(restUnits(), 12, 'metronome off: the pause should be written as rests');
-
-// A long stop starts a new take instead of a page of rests.
-play(20000 + 60 * SEC, 0.5 * SEC);
-assert.equal(onsets()[2], 24, 'a long stop wrote silence instead of starting a new take');
+play(20000, 0.5 * SEC);               // a vasu
+play(20000 + 2 * SEC, 0.5 * SEC);     // a pause, then another
+play(20000 + 60 * SEC, 0.5 * SEC);    // a long stop, then another
+assert.deepEqual(onsets(), [0, 4, 8], 'metronome off: a pause must not move the next note');
+assert.equal(state.notes.filter(n => n.type === 'rest').length, 0,
+  'metronome off: a pause must not be written as rests');
 
 console.log('onset-grid: ok');
